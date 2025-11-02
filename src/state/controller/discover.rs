@@ -353,7 +353,7 @@ impl AppController {
 
         if let Some(row) = self.widgets.discover.list.row_at_index(idx as i32) {
             if row.parent().is_some() {
-                row.grab_focus();
+                self.widgets.discover.list.select_row(Some(&row));
             }
         } else {
             self.update_discover_details();
@@ -609,8 +609,6 @@ impl AppController {
         let button = &self.widgets.discover.detail_action_button;
         let version_value = &self.widgets.discover.detail_version_value;
         let download_value = &self.widgets.discover.detail_download_value;
-        let repo_row = &self.widgets.discover.detail_repository_row;
-        let repo_value = &self.widgets.discover.detail_repository_value;
         let homepage_row = &self.widgets.discover.detail_homepage_row;
         let homepage_link = &self.widgets.discover.detail_homepage_link;
         let maintainer_row = &self.widgets.discover.detail_maintainer_row;
@@ -671,8 +669,6 @@ impl AppController {
             if loading {
                 update_label.set_visible(false);
                 update_label.set_text("");
-                repo_row.set_visible(false);
-                repo_value.set_visible(false);
                 homepage_row.set_visible(false);
                 homepage_link.set_visible(false);
                 maintainer_row.set_visible(false);
@@ -695,8 +691,6 @@ impl AppController {
             } else if let Some(error) = error.clone() {
                 update_label.set_visible(false);
                 update_label.set_text("");
-                repo_row.set_visible(false);
-                repo_value.set_visible(false);
                 homepage_row.set_visible(false);
                 homepage_link.set_visible(false);
                 maintainer_row.set_visible(false);
@@ -732,20 +726,6 @@ impl AppController {
                     pkg.download_bytes,
                     pkg.download_size.as_deref(),
                 );
-
-                if let Some(repository) = detail
-                    .as_ref()
-                    .and_then(|d| d.repository.clone())
-                    .or_else(|| pkg.repository.clone())
-                {
-                    repo_row.set_visible(true);
-                    repo_value.set_visible(true);
-                    repo_value.set_text(&repository);
-                } else {
-                    repo_row.set_visible(false);
-                    repo_value.set_visible(false);
-                    repo_value.set_text("");
-                }
 
                 if let Some(detail) = detail {
                     if let Some(homepage) = detail.homepage {
@@ -790,8 +770,8 @@ impl AppController {
                     }
 
                     if pkg.installed {
-                        update_label.set_text("Installed on this system.");
-                        update_label.set_visible(true);
+                        update_label.set_visible(false);
+                        update_label.set_text("");
                     } else if let Some(prev) = pkg.previous_version.clone() {
                         if prev.is_empty() {
                             update_label.set_visible(false);
@@ -899,9 +879,6 @@ impl AppController {
         description.set_text("Select a package to see details.");
         download_value.set_text("—");
         version_value.set_text("—");
-        repo_row.set_visible(false);
-        repo_value.set_visible(false);
-        repo_value.set_text("");
         update_label.set_visible(false);
         update_label.set_text("");
         homepage_row.set_visible(false);
@@ -991,14 +968,6 @@ impl AppController {
         self.widgets
             .discover
             .detail_license_value
-            .set_visible(false);
-        self.widgets
-            .discover
-            .detail_repository_row
-            .set_visible(false);
-        self.widgets
-            .discover
-            .detail_repository_value
             .set_visible(false);
         self.widgets
             .discover
@@ -1628,8 +1597,6 @@ impl AppController {
         let update_label = &widgets.spotlight_recent_detail_update_label;
         let version_value = &widgets.spotlight_recent_detail_version_value;
         let download_value = &widgets.spotlight_recent_detail_download_value;
-        let repo_row = &widgets.spotlight_recent_detail_repo_row;
-        let repo_value = &widgets.spotlight_recent_detail_repo_value;
         let homepage_row = &widgets.spotlight_recent_detail_homepage_row;
         let homepage_link = &widgets.spotlight_recent_detail_homepage_link;
         let maintainer_row = &widgets.spotlight_recent_detail_maintainer_row;
@@ -1695,21 +1662,6 @@ impl AppController {
                 pkg.download_size.as_deref(),
             );
 
-            let repo_text = detail
-                .as_ref()
-                .and_then(|d| d.repository.clone())
-                .or_else(|| pkg.repository.clone());
-
-            if let Some(repo) = repo_text {
-                repo_row.set_visible(true);
-                repo_value.set_visible(true);
-                repo_value.set_text(&repo);
-            } else {
-                repo_row.set_visible(false);
-                repo_value.set_visible(false);
-                repo_value.set_text("");
-            }
-
             if let Some(detail) = detail.clone() {
                 if let Some(homepage) = detail.homepage {
                     homepage_row.set_visible(true);
@@ -1763,8 +1715,8 @@ impl AppController {
                 }
 
                 if pkg.installed {
-                    update_label.set_text("Installed on this system.");
-                    update_label.set_visible(true);
+                    update_label.set_visible(false);
+                    update_label.set_text("");
                 } else {
                     update_label.set_visible(false);
                     update_label.set_text("");
@@ -1923,9 +1875,6 @@ impl AppController {
                 .set_text("Select a package");
             version_value.set_text("—");
             download_value.set_text("—");
-            repo_row.set_visible(false);
-            repo_value.set_visible(false);
-            repo_value.set_text("");
             homepage_row.set_visible(false);
             homepage_link.set_visible(false);
             homepage_link.set_label("");

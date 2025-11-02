@@ -53,8 +53,6 @@ pub(crate) struct DiscoverWidgets {
     pub(crate) detail_back_button: gtk::Button,
     pub(crate) detail_close_button: gtk::Button,
     pub(crate) detail_version_value: gtk::Label,
-    pub(crate) detail_repository_row: gtk::Box,
-    pub(crate) detail_repository_value: gtk::Label,
     pub(crate) detail_description: gtk::Label,
     pub(crate) detail_download_value: gtk::Label,
     pub(crate) detail_homepage_row: gtk::Box,
@@ -80,8 +78,6 @@ pub(crate) struct DiscoverWidgets {
     pub(crate) spotlight_recent_detail_name: gtk::Label,
     pub(crate) spotlight_recent_detail_spinner: gtk::Spinner,
     pub(crate) spotlight_recent_detail_version_value: gtk::Label,
-    pub(crate) spotlight_recent_detail_repo_row: gtk::Box,
-    pub(crate) spotlight_recent_detail_repo_value: gtk::Label,
     pub(crate) spotlight_recent_detail_download_value: gtk::Label,
     pub(crate) spotlight_recent_detail_updated_row: gtk::Box,
     pub(crate) spotlight_recent_detail_updated_value: gtk::Label,
@@ -351,42 +347,26 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     recent_detail_download_row.append(&recent_detail_download_value);
     recent_detail_metadata_box.append(&recent_detail_download_row);
 
-    let recent_detail_repo_row = gtk::Box::builder()
+    let recent_detail_license_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .halign(gtk::Align::Fill)
         .visible(false)
         .build();
-    let recent_detail_repo_title = make_recent_metadata_label("Repository");
-    let recent_detail_repo_value = gtk::Label::builder()
+    let recent_detail_license_title = make_recent_metadata_label("License");
+    let recent_detail_license_value = gtk::Label::builder()
         .halign(gtk::Align::Start)
-        .single_line_mode(true)
-        .ellipsize(pango::EllipsizeMode::End)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
+        .ellipsize(pango::EllipsizeMode::None)
         .visible(false)
         .build();
-    recent_detail_repo_value.set_hexpand(true);
-    recent_detail_repo_value.set_xalign(0.0);
-    recent_detail_repo_row.append(&recent_detail_repo_title);
-    recent_detail_repo_row.append(&recent_detail_repo_value);
-    recent_detail_metadata_box.append(&recent_detail_repo_row);
-
-    let recent_detail_homepage_row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(6)
-        .halign(gtk::Align::Fill)
-        .visible(false)
-        .build();
-    let recent_detail_homepage_title = make_recent_metadata_label("Homepage");
-    let recent_detail_homepage_link = gtk::LinkButton::builder()
-        .label("")
-        .has_frame(false)
-        .visible(false)
-        .build();
-    recent_detail_homepage_link.set_halign(gtk::Align::Start);
-    recent_detail_homepage_link.set_hexpand(true);
-    recent_detail_homepage_row.append(&recent_detail_homepage_title);
-    recent_detail_homepage_row.append(&recent_detail_homepage_link);
-    recent_detail_metadata_box.append(&recent_detail_homepage_row);
+    recent_detail_license_value.set_hexpand(true);
+    recent_detail_license_value.set_xalign(0.0);
+    recent_detail_license_value.set_selectable(true);
+    recent_detail_license_row.append(&recent_detail_license_title);
+    recent_detail_license_row.append(&recent_detail_license_value);
+    recent_detail_metadata_box.append(&recent_detail_license_row);
 
     let recent_detail_maintainer_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -409,26 +389,29 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     recent_detail_maintainer_row.append(&recent_detail_maintainer_value);
     recent_detail_metadata_box.append(&recent_detail_maintainer_row);
 
-    let recent_detail_license_row = gtk::Box::builder()
+    let recent_detail_homepage_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .halign(gtk::Align::Fill)
         .visible(false)
         .build();
-    let recent_detail_license_title = make_recent_metadata_label("License");
-    let recent_detail_license_value = gtk::Label::builder()
-        .halign(gtk::Align::Start)
-        .wrap(true)
-        .wrap_mode(pango::WrapMode::WordChar)
-        .ellipsize(pango::EllipsizeMode::None)
+    let recent_detail_homepage_title = make_recent_metadata_label("Homepage");
+    let recent_detail_homepage_link = gtk::LinkButton::builder()
+        .label("")
+        .has_frame(false)
         .visible(false)
         .build();
-    recent_detail_license_value.set_hexpand(true);
-    recent_detail_license_value.set_xalign(0.0);
-    recent_detail_license_value.set_selectable(true);
-    recent_detail_license_row.append(&recent_detail_license_title);
-    recent_detail_license_row.append(&recent_detail_license_value);
-    recent_detail_metadata_box.append(&recent_detail_license_row);
+    recent_detail_homepage_link.add_css_class("flat");
+    recent_detail_homepage_link.set_margin_top(0);
+    recent_detail_homepage_link.set_margin_bottom(0);
+    recent_detail_homepage_link.set_margin_start(0);
+    recent_detail_homepage_link.set_margin_end(0);
+    recent_detail_homepage_link.set_valign(gtk::Align::Center);
+    recent_detail_homepage_link.set_halign(gtk::Align::Start);
+    recent_detail_homepage_link.set_hexpand(true);
+    recent_detail_homepage_row.append(&recent_detail_homepage_title);
+    recent_detail_homepage_row.append(&recent_detail_homepage_link);
+    recent_detail_metadata_box.append(&recent_detail_homepage_row);
 
     let recent_detail_updated_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -470,7 +453,7 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .wrap(true)
         .wrap_mode(pango::WrapMode::Word)
         .hexpand(true)
-        .justify(gtk::Justification::Fill)
+        .justify(gtk::Justification::Left)
         .build();
     recent_detail_description.set_text("Select a package to see details.");
     recent_detail_description.set_ellipsize(pango::EllipsizeMode::None);
@@ -575,7 +558,7 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     spotlight_recent_stack.set_visible_child_name("placeholder");
 
     let recent_heading = gtk::Label::builder()
-        .label("Recent repository updates")
+        .label("Recent package updates")
         .halign(gtk::Align::Start)
         .build();
     recent_heading.add_css_class("title-2");
@@ -779,42 +762,26 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     detail_download_row.append(&detail_download_value);
     detail_metadata_box.append(&detail_download_row);
 
-    let detail_repository_row = gtk::Box::builder()
+    let detail_license_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .halign(gtk::Align::Fill)
         .visible(false)
         .build();
-    let detail_repository_title = make_metadata_label("Repository");
-    let detail_repository_value = gtk::Label::builder()
+    let detail_license_title = make_metadata_label("License");
+    let detail_license_value = gtk::Label::builder()
         .halign(gtk::Align::Start)
-        .single_line_mode(true)
-        .ellipsize(pango::EllipsizeMode::End)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
+        .ellipsize(pango::EllipsizeMode::None)
         .visible(false)
         .build();
-    detail_repository_value.set_hexpand(true);
-    detail_repository_value.set_xalign(0.0);
-    detail_repository_row.append(&detail_repository_title);
-    detail_repository_row.append(&detail_repository_value);
-    detail_metadata_box.append(&detail_repository_row);
-
-    let detail_homepage_link = gtk::LinkButton::builder()
-        .label("")
-        .halign(gtk::Align::Start)
-        .has_frame(false)
-        .visible(false)
-        .build();
-    detail_homepage_link.set_hexpand(true);
-    let detail_homepage_row = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(6)
-        .halign(gtk::Align::Fill)
-        .visible(false)
-        .build();
-    let detail_homepage_title = make_metadata_label("Homepage");
-    detail_homepage_row.append(&detail_homepage_title);
-    detail_homepage_row.append(&detail_homepage_link);
-    detail_metadata_box.append(&detail_homepage_row);
+    detail_license_value.set_hexpand(true);
+    detail_license_value.set_xalign(0.0);
+    detail_license_value.set_selectable(true);
+    detail_license_row.append(&detail_license_title);
+    detail_license_row.append(&detail_license_value);
+    detail_metadata_box.append(&detail_license_row);
 
     let detail_maintainer_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -837,26 +804,29 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     detail_maintainer_row.append(&detail_maintainer_value);
     detail_metadata_box.append(&detail_maintainer_row);
 
-    let detail_license_row = gtk::Box::builder()
+    let detail_homepage_link = gtk::LinkButton::builder()
+        .label("")
+        .halign(gtk::Align::Start)
+        .has_frame(false)
+        .visible(false)
+        .build();
+    detail_homepage_link.add_css_class("flat");
+    detail_homepage_link.set_margin_top(0);
+    detail_homepage_link.set_margin_bottom(0);
+    detail_homepage_link.set_margin_start(0);
+    detail_homepage_link.set_margin_end(0);
+    detail_homepage_link.set_valign(gtk::Align::Center);
+    detail_homepage_link.set_hexpand(true);
+    let detail_homepage_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .halign(gtk::Align::Fill)
         .visible(false)
         .build();
-    let detail_license_title = make_metadata_label("License");
-    let detail_license_value = gtk::Label::builder()
-        .halign(gtk::Align::Start)
-        .wrap(true)
-        .wrap_mode(pango::WrapMode::WordChar)
-        .ellipsize(pango::EllipsizeMode::None)
-        .visible(false)
-        .build();
-    detail_license_value.set_hexpand(true);
-    detail_license_value.set_xalign(0.0);
-    detail_license_value.set_selectable(true);
-    detail_license_row.append(&detail_license_title);
-    detail_license_row.append(&detail_license_value);
-    detail_metadata_box.append(&detail_license_row);
+    let detail_homepage_title = make_metadata_label("Homepage");
+    detail_homepage_row.append(&detail_homepage_title);
+    detail_homepage_row.append(&detail_homepage_link);
+    detail_metadata_box.append(&detail_homepage_row);
 
     let detail_update_label = gtk::Label::builder()
         .halign(gtk::Align::Start)
@@ -882,7 +852,7 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .wrap(true)
         .wrap_mode(pango::WrapMode::Word)
         .hexpand(true)
-        .justify(gtk::Justification::Fill)
+        .justify(gtk::Justification::Left)
         .build();
     detail_description.set_text("Select a package to see details.");
     detail_description.set_ellipsize(pango::EllipsizeMode::None);
@@ -1016,8 +986,6 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         detail_back_button,
         detail_close_button,
         detail_version_value,
-        detail_repository_row,
-        detail_repository_value,
         detail_description,
         detail_download_value,
         detail_homepage_row,
@@ -1043,8 +1011,6 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         spotlight_recent_detail_name: recent_detail_name.clone(),
         spotlight_recent_detail_spinner: recent_detail_spinner.clone(),
         spotlight_recent_detail_version_value: recent_detail_version_value.clone(),
-        spotlight_recent_detail_repo_row: recent_detail_repo_row.clone(),
-        spotlight_recent_detail_repo_value: recent_detail_repo_value.clone(),
         spotlight_recent_detail_download_value: recent_detail_download_value.clone(),
         spotlight_recent_detail_updated_row: recent_detail_updated_row.clone(),
         spotlight_recent_detail_updated_value: recent_detail_updated_value.clone(),

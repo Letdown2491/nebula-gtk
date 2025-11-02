@@ -403,6 +403,14 @@ impl AppController {
                 .installed
                 .detail_stack
                 .set_visible_child_name("detail");
+            self.widgets
+                .installed
+                .detail_close_button
+                .set_visible(true);
+            self.widgets
+                .installed
+                .detail_close_button
+                .set_sensitive(true);
             self.widgets.installed.detail_name.set_text(&pkg.name);
 
             let (detail, loading, error, remove_in_progress, update_in_progress) = {
@@ -792,7 +800,7 @@ impl AppController {
 
         if let Some(row) = self.widgets.installed.list.row_at_index(list_index as i32) {
             if row.parent().is_some() {
-                row.grab_focus();
+                self.widgets.installed.list.select_row(Some(&row));
             }
         }
 

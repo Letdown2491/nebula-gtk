@@ -220,17 +220,56 @@ pub(crate) fn query_package_metadata(package: &str) -> PackageMetadata {
     ];
     let mut metadata = PackageMetadata::default();
 
-    if let Some(values) = query_properties_bulk(package, &PROPERTIES) {
-        if let Some(long_desc) = values.get("long_desc").and_then(parse_long_description) {
-            metadata.long_desc = Some(long_desc);
+    if let Some(values) = query_properties_from_show(package, &PROPERTIES, false) {
+        apply_package_metadata(&values, &mut metadata);
+    }
+
+    if metadata.long_desc.is_none()
+        || metadata.homepage.is_none()
+        || metadata.maintainer.is_none()
+        || metadata.license.is_none()
+        || metadata.repository.is_none()
+    {
+        if let Some(values) = query_properties_from_show(package, &PROPERTIES, true) {
+            apply_package_metadata(&values, &mut metadata);
         }
-        metadata.homepage = values.get("homepage").and_then(clean_simple_property);
-        metadata.maintainer = values.get("maintainer").and_then(clean_simple_property);
-        metadata.license = values.get("license").and_then(clean_simple_property);
-        metadata.repository = values.get("repository").and_then(clean_simple_property);
     }
 
     metadata
+}
+
+fn apply_package_metadata(
+    values: &HashMap<String, String>,
+    metadata: &mut PackageMetadata,
+) {
+    if metadata.long_desc.is_none() {
+        if let Some(long_desc) = values.get("long_desc").and_then(parse_long_description) {
+            metadata.long_desc = Some(long_desc);
+        }
+    }
+    if metadata.homepage.is_none() {
+        if let Some(homepage) = values.get("homepage").and_then(clean_simple_property) {
+            metadata.homepage = Some(homepage);
+        }
+    }
+    if metadata.maintainer.is_none() {
+        if let Some(maintainer) = values.get("maintainer").and_then(clean_simple_property) {
+            metadata.maintainer = Some(maintainer);
+        }
+    }
+    if metadata.license.is_none() {
+        if let Some(license) = values.get("license").and_then(clean_simple_property) {
+            metadata.license = Some(license);
+        }
+    }
+    if metadata.repository.is_none() {
+        if let Some(repository) = values
+            .get("repository")
+            .and_then(clean_simple_property)
+        {
+            metadata.repository = Some(repository);
+        }
+    }
 }
 
 fn clean_simple_property(raw: &String) -> Option<String> {
@@ -242,16 +281,22 @@ fn clean_simple_property(raw: &String) -> Option<String> {
     }
 }
 
-fn query_properties_bulk(package: &str, properties: &[&str]) -> Option<HashMap<String, String>> {
+fn query_properties_from_show(
+    package: &str,
+    properties: &[&str],
+    remote: bool,
+) -> Option<HashMap<String, String>> {
     if properties.is_empty() {
         return Some(HashMap::new());
     }
 
     let mut command = Command::new("xbps-query");
-    for prop in properties {
-        command.arg("-p");
-        command.arg(prop);
+    if remote {
+        command.arg("-R");
+    } else {
+        command.arg("-S");
     }
+    command.arg("--show");
     command.arg(package);
 
     let output = command.output().ok()?;
@@ -268,10 +313,6 @@ fn query_properties_bulk(package: &str, properties: &[&str]) -> Option<HashMap<S
 
     for line in stdout.lines() {
         let trimmed_end = line.trim_end();
-        if trimmed_end.is_empty() {
-            continue;
-        }
-
         if let Some((candidate, remainder)) = trimmed_end.split_once(':') {
             let key = candidate.trim();
             if property_set.contains(key) {
@@ -280,8 +321,14 @@ fn query_properties_bulk(package: &str, properties: &[&str]) -> Option<HashMap<S
                     result.entry(prev_key).or_insert(normalized);
                 }
                 current_key = Some(key.to_string());
-                current_value = remainder.trim().to_string();
+                current_value = remainder.trim_start().to_string();
                 continue;
+            } else if current_key.is_some() {
+                if let Some(prev_key) = current_key.take() {
+                    let normalized = normalize_property_text(&current_value);
+                    result.entry(prev_key).or_insert(normalized);
+                }
+                current_value.clear();
             }
         }
 
@@ -296,12 +343,6 @@ fn query_properties_bulk(package: &str, properties: &[&str]) -> Option<HashMap<S
             current_value.push_str(value);
             continue;
         }
-
-        if properties.len() == 1 {
-            let key = properties[0].to_string();
-            let normalized = normalize_property_text(trimmed_end);
-            result.entry(key).or_insert(normalized);
-        }
     }
 
     if let Some(prev_key) = current_key {
@@ -309,7 +350,11 @@ fn query_properties_bulk(package: &str, properties: &[&str]) -> Option<HashMap<S
         result.entry(prev_key).or_insert(normalized);
     }
 
-    Some(result)
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 fn normalize_property_text(value: &str) -> String {

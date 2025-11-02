@@ -7,7 +7,7 @@ use gtk4 as gtk;
 use libadwaita as adw;
 
 use adw::prelude::*;
-use gtk::glib;
+use gtk::glib::{self, Propagation};
 use gtk::pango;
 
 use crate::settings::{AppSettings, StartPagePreference, UpdateCheckFrequency, save_app_settings};
@@ -31,6 +31,8 @@ pub(crate) struct AppController {
     pub(crate) update_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) installed_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) discover_buttons: RefCell<Vec<gtk::Button>>,
+    pub(crate) preferences_window: RefCell<Option<adw::PreferencesWindow>>,
+    pub(crate) about_dialog: RefCell<Option<gtk::Dialog>>,
 }
 
 impl AppController {
@@ -71,6 +73,8 @@ impl AppController {
             update_buttons: RefCell::new(Vec::new()),
             installed_buttons: RefCell::new(Vec::new()),
             discover_buttons: RefCell::new(Vec::new()),
+            preferences_window: RefCell::new(None),
+            about_dialog: RefCell::new(None),
         }
     }
 
@@ -1058,11 +1062,36 @@ impl AppController {
     }
 
     pub(crate) fn show_preferences(self: &Rc<Self>) {
+        if let Some(existing) = self.preferences_window.borrow().as_ref() {
+            existing.present();
+            return;
+        }
+
         let prefs = adw::PreferencesWindow::builder()
             .transient_for(&self.window)
             .modal(true)
             .title("Preferences")
             .build();
+        prefs.set_application(Some(&self.app));
+        self.preferences_window.replace(Some(prefs.clone()));
+
+        {
+            let controller = Rc::downgrade(self);
+            prefs.connect_close_request(move |_| {
+                if let Some(controller) = controller.upgrade() {
+                    controller.preferences_window.replace(None);
+                }
+                Propagation::Proceed
+            });
+        }
+        {
+            let controller = Rc::downgrade(self);
+            prefs.connect_destroy(move |_| {
+                if let Some(controller) = controller.upgrade() {
+                    controller.preferences_window.replace(None);
+                }
+            });
+        }
 
         let general_page = adw::PreferencesPage::builder().title("General").build();
 
@@ -1074,12 +1103,12 @@ impl AppController {
         let start_combo = adw::ComboRow::builder()
             .title("Startup page")
             .model(&startup_model)
-            .selected(match self.state.borrow().start_page_preference {
-                StartPagePreference::LastVisited => 1,
-                StartPagePreference::Discover => 0,
-            })
             .build();
         startup_group.add(&start_combo);
+        start_combo.set_selected(match self.state.borrow().start_page_preference {
+            StartPagePreference::LastVisited => 1,
+            StartPagePreference::Discover => 0,
+        });
         general_page.add(&startup_group);
 
         let updates_group = adw::PreferencesGroup::builder()
@@ -1098,12 +1127,12 @@ impl AppController {
         let freq_combo = adw::ComboRow::builder()
             .title("Frequency")
             .model(&frequency_model)
-            .selected(match self.state.borrow().auto_check_frequency {
-                UpdateCheckFrequency::Daily => 0,
-                UpdateCheckFrequency::Weekly => 1,
-            })
             .build();
         freq_combo.set_sensitive(self.state.borrow().auto_check_enabled);
+        freq_combo.set_selected(match self.state.borrow().auto_check_frequency {
+            UpdateCheckFrequency::Daily => 0,
+            UpdateCheckFrequency::Weekly => 1,
+        });
 
         updates_group.add(&auto_switch_row);
         updates_group.add(&freq_combo);
@@ -1188,6 +1217,105 @@ impl AppController {
         });
 
         prefs.present();
+    }
+
+    pub(crate) fn show_about_dialog(self: &Rc<Self>) {
+        if let Some(existing) = self.about_dialog.borrow().as_ref() {
+            existing.present();
+            return;
+        }
+
+        let version = env!("CARGO_PKG_VERSION");
+        let dialog = gtk::Dialog::builder()
+            .transient_for(&self.window)
+            .modal(true)
+            .title("About Nebula")
+            .resizable(false)
+            .build();
+        dialog.set_application(Some(&self.app));
+
+        let content = dialog.content_area();
+        content.set_margin_start(24);
+        content.set_margin_end(24);
+        content.set_margin_top(20);
+        content.set_margin_bottom(20);
+        content.set_spacing(12);
+
+        let title = gtk::Label::builder()
+            .label("Nebula")
+            .halign(gtk::Align::Start)
+            .build();
+        title.add_css_class("title-3");
+
+        let version_label = gtk::Label::builder()
+            .label(&format!("Version {}", version))
+            .halign(gtk::Align::Start)
+            .build();
+        version_label.add_css_class("dim-label");
+
+        let description = gtk::Label::builder()
+            .label("Nebula makes it easy to discover, install, and update software on Void Linux.")
+            .wrap(true)
+            .wrap_mode(pango::WrapMode::WordChar)
+            .halign(gtk::Align::Start)
+            .build();
+        description.set_xalign(0.0);
+
+        let links_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
+            .halign(gtk::Align::Start)
+            .build();
+
+        let make_link = |text: &str, url: &str| {
+            let link = gtk::LinkButton::builder()
+                .label(text)
+                .uri(url)
+                .halign(gtk::Align::Start)
+                .build();
+            link.add_css_class("flat");
+            link
+        };
+
+        links_box.append(&make_link("Project website", "https://github.com/geektoshi/nebula"));
+        links_box.append(&make_link(
+            "Report an issue",
+            "https://github.com/geektoshi/nebula/issues",
+        ));
+        links_box.append(&make_link(
+            "Support & discussions",
+            "https://github.com/geektoshi/nebula/discussions",
+        ));
+
+        content.append(&title);
+        content.append(&version_label);
+        content.append(&description);
+        content.append(&links_box);
+
+        dialog.add_button("Close", gtk::ResponseType::Close);
+        dialog.connect_response(|dialog, _| dialog.close());
+
+        {
+            let controller = Rc::downgrade(self);
+            dialog.connect_hide(move |_| {
+                if let Some(controller) = controller.upgrade() {
+                    controller.about_dialog.replace(None);
+                }
+            });
+        }
+
+        {
+            let controller = Rc::downgrade(self);
+            dialog.connect_close_request(move |_| {
+                if let Some(controller) = controller.upgrade() {
+                    controller.about_dialog.replace(None);
+                }
+                Propagation::Proceed
+            });
+        }
+
+        self.about_dialog.replace(Some(dialog.clone()));
+        dialog.present();
     }
 
     pub(crate) fn set_installed_status_message(&self, message: Option<String>) {

@@ -127,16 +127,6 @@ pub(crate) fn build_ui(app: &adw::Application) {
     app.add_action(&show_updates_action);
 
     let about_action = gio::SimpleAction::new("about", None);
-    about_action.connect_activate(glib::clone!(@weak window => move |_, _| {
-        let dialog = gtk::Dialog::builder()
-            .transient_for(&window)
-            .modal(true)
-            .title("About Nebula")
-            .build();
-        dialog.add_button("Close", gtk::ResponseType::Close);
-        dialog.connect_response(|dialog, _| dialog.close());
-        dialog.present();
-    }));
     app.add_action(&about_action);
 
     let menu_button = gtk::MenuButton::builder()
@@ -381,6 +371,15 @@ pub(crate) fn build_ui(app: &adw::Application) {
         preferences_action.connect_activate(move |_, _| {
             if let Some(controller) = controller_weak.upgrade() {
                 controller.show_preferences();
+            }
+        });
+    }
+
+    {
+        let controller_weak = Rc::downgrade(&controller);
+        about_action.connect_activate(move |_, _| {
+            if let Some(controller) = controller_weak.upgrade() {
+                controller.show_about_dialog();
             }
         });
     }

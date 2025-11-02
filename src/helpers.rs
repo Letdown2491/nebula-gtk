@@ -82,7 +82,22 @@ pub(crate) fn format_relative_time(timestamp: DateTime<Utc>) -> String {
         return format!("{} day{} ago", days, if days == 1 { "" } else { "s" });
     }
 
-    timestamp.format("%Y-%m-%d %H:%M UTC").to_string()
+    let weeks = days / 7;
+    if weeks < 5 {
+        return format!("{} week{} ago", weeks, if weeks == 1 { "" } else { "s" });
+    }
+
+    let months = days / 30;
+    if months < 12 {
+        return format!("{} month{} ago", months, if months == 1 { "" } else { "s" });
+    }
+
+    let years = days / 365;
+    if years < 1 {
+        return "about a year ago".to_string();
+    }
+
+    format!("{} year{} ago", years, if years == 1 { "" } else { "s" })
 }
 
 pub(crate) fn glib_datetime_to_chrono(dt: &glib::DateTime) -> Option<DateTime<Utc>> {

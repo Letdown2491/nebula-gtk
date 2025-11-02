@@ -140,12 +140,11 @@ pub(crate) fn build_ui(app: &adw::Application) {
     let popover_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(6)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
         .build();
-    let theme_header = gtk::Label::builder()
-        .label("Switch theme")
-        .halign(gtk::Align::Start)
-        .build();
-    theme_header.add_css_class("title-6");
 
     let theme_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -200,30 +199,42 @@ pub(crate) fn build_ui(app: &adw::Application) {
         }),
     );
 
-    let theme_row = adw::ActionRow::builder().title("Switch theme").build();
-    theme_row.add_suffix(&theme_box);
-    theme_row.set_activatable(false);
-
     theme_box.append(&system_button);
     theme_box.append(&light_button);
     theme_box.append(&dark_button);
 
-    popover_box.append(&theme_header);
-    popover_box.append(&theme_row);
+    let theme_list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .build();
+    theme_list.add_css_class("boxed-list");
+
+    let theme_row = adw::ActionRow::builder().title("Switch theme").build();
+    theme_row.add_suffix(&theme_box);
+    theme_row.set_activatable(false);
+    theme_list.append(&theme_row);
+
+    popover_box.append(&theme_list);
+
+    let menu_list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .build();
+    menu_list.add_css_class("boxed-list");
 
     let prefs_row = adw::ActionRow::builder()
         .title("Preferences")
         .activatable(true)
         .build();
     prefs_row.set_action_name(Some("app.preferences"));
-    popover_box.append(&prefs_row);
+    menu_list.append(&prefs_row);
 
     let about_row = adw::ActionRow::builder()
         .title("About Nebula")
         .activatable(true)
         .build();
     about_row.set_action_name(Some("app.about"));
-    popover_box.append(&about_row);
+    menu_list.append(&about_row);
+
+    popover_box.append(&menu_list);
 
     popover.set_child(Some(&popover_box));
     menu_button.set_popover(Some(&popover));
@@ -368,7 +379,9 @@ pub(crate) fn build_ui(app: &adw::Application) {
 
     {
         let controller_weak = Rc::downgrade(&controller);
+        let popover_clone = popover.clone();
         preferences_action.connect_activate(move |_, _| {
+            popover_clone.popdown();
             if let Some(controller) = controller_weak.upgrade() {
                 controller.show_preferences();
             }
@@ -377,7 +390,9 @@ pub(crate) fn build_ui(app: &adw::Application) {
 
     {
         let controller_weak = Rc::downgrade(&controller);
+        let popover_clone = popover.clone();
         about_action.connect_activate(move |_, _| {
+            popover_clone.popdown();
             if let Some(controller) = controller_weak.upgrade() {
                 controller.show_about_dialog();
             }

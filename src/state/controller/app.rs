@@ -1105,10 +1105,6 @@ impl AppController {
             .model(&startup_model)
             .build();
         startup_group.add(&start_combo);
-        start_combo.set_selected(match self.state.borrow().start_page_preference {
-            StartPagePreference::LastVisited => 1,
-            StartPagePreference::Discover => 0,
-        });
         general_page.add(&startup_group);
 
         let updates_group = adw::PreferencesGroup::builder()
@@ -1129,10 +1125,6 @@ impl AppController {
             .model(&frequency_model)
             .build();
         freq_combo.set_sensitive(self.state.borrow().auto_check_enabled);
-        freq_combo.set_selected(match self.state.borrow().auto_check_frequency {
-            UpdateCheckFrequency::Daily => 0,
-            UpdateCheckFrequency::Weekly => 1,
-        });
 
         updates_group.add(&auto_switch_row);
         updates_group.add(&freq_combo);
@@ -1172,6 +1164,28 @@ impl AppController {
         general_page.add(&install_group);
 
         prefs.add(&general_page);
+
+        {
+            let start_combo_ref = start_combo.downgrade();
+            let freq_combo_ref = freq_combo.downgrade();
+            let initial_start = match self.state.borrow().start_page_preference {
+                StartPagePreference::LastVisited => 1,
+                StartPagePreference::Discover => 0,
+            };
+            let initial_freq = match self.state.borrow().auto_check_frequency {
+                UpdateCheckFrequency::Daily => 0,
+                UpdateCheckFrequency::Weekly => 1,
+            };
+            glib::idle_add_local(move || {
+                if let Some(combo) = start_combo_ref.upgrade() {
+                    combo.set_selected(initial_start);
+                }
+                if let Some(combo) = freq_combo_ref.upgrade() {
+                    combo.set_selected(initial_freq);
+                }
+                glib::ControlFlow::Break
+            });
+        }
 
         let controller_clone = Rc::clone(self);
         start_combo.connect_selected_notify(move |row| {

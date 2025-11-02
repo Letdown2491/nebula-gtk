@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/tech/geektoshi/Nebula">
+    <file>icons/nebula.png</file>
+    <file>icons/browsers.svg</file>
+    <file>icons/chat.svg</file>
+    <file>icons/email.svg</file>
+    <file>icons/games.svg</file>
+    <file>icons/graphics.svg</file>
+    <file>icons/music.svg</file>
+    <file>icons/video.svg</file>
+    <file>icons/productivity.svg</file>
+    <file>icons/utilities.svg</file>
+  </gresource>
+</gresources>

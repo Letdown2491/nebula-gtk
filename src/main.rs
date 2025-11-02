@@ -1,11 +1,12 @@
+mod settings;
+mod spotlight;
+mod types;
+mod xbps;
+
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::env;
-use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
 use std::rc::Rc;
-use std::sync::{Arc, mpsc};
+use std::sync::mpsc;
 use std::thread;
 
 use gtk4 as gtk;
@@ -16,8 +17,26 @@ use glib::{Variant, VariantTy};
 use gtk::{gdk, gio, glib, pango};
 use std::f64::consts::PI;
 
-use chrono::{DateTime, Duration, FixedOffset, LocalResult, NaiveDateTime, TimeZone, Utc};
-use serde::{Deserialize, Serialize};
+use crate::settings::{
+    AppSettings, StartPagePreference, ThemePreference, UpdateCheckFrequency, load_app_settings,
+    save_app_settings,
+};
+use crate::spotlight::{
+    SPOTLIGHT_REFRESH_INTERVAL_HOURS, SpotlightCache, SpotlightCategory, build_category_results,
+    category_display_name, compute_spotlight_sections, load_spotlight_cache_from_disk,
+    refresh_spotlight_cache, save_spotlight_cache_to_disk,
+};
+use crate::types::{CommandResult, DependencyInfo, PackageInfo, lowercase_cache};
+use crate::xbps::{
+    PackageMetadata, format_download_size, format_size, query_package_metadata,
+    query_pkgsize_bytes, query_repo_package_info, run_xbps_alternatives_list,
+    run_xbps_check_updates, run_xbps_install, run_xbps_list_installed, run_xbps_pkgdb_check,
+    run_xbps_query_dependencies, run_xbps_query_required_by, run_xbps_query_search,
+    run_xbps_reconfigure_all, run_xbps_remove, run_xbps_remove_orphans, run_xbps_remove_packages,
+    run_xbps_update_all, run_xbps_update_package, run_xbps_update_packages, summarize_output_line,
+    truncate_for_summary,
+};
+use chrono::{DateTime, Utc};
 
 #[derive(Clone, Copy)]
 enum ThemeGlyph {
@@ -27,13 +46,6 @@ enum ThemeGlyph {
 }
 
 const APP_ID: &str = "tech.geektoshi.Nebula";
-const SPOTLIGHT_WINDOW_DAYS: i64 = 7;
-const SPOTLIGHT_RECENT_LIMIT: usize = 25;
-const SPOTLIGHT_CACHE_FILE: &str = "spotlight.json";
-const SPOTLIGHT_CACHE_VERSION: u32 = 1;
-const SPOTLIGHT_CACHE_MAX_ENTRIES: usize = 4096;
-const SPOTLIGHT_REFRESH_INTERVAL_HOURS: i64 = 24;
-const APP_SETTINGS_FILE: &str = "settings.json";
 
 fn main() -> glib::ExitCode {
     adw::init().expect("Failed to initialize libadwaita");
@@ -390,6 +402,7 @@ fn build_ui(app: &adw::Application) {
     let (discover_page, discover_widgets) = build_discover_page();
     let (installed_page, installed_widgets) = build_installed_page();
     let (updates_page, updates_widgets) = build_updates_page();
+    let (tools_page, tools_widgets) = build_tools_page();
 
     let discover_page_ref = view_stack.add_titled(&discover_page, Some("discover"), "Discover");
     discover_page_ref.set_icon_name(Some(""));
@@ -397,6 +410,8 @@ fn build_ui(app: &adw::Application) {
     installed_page_ref.set_icon_name(Some(""));
     let updates_page_ref = view_stack.add_titled(&updates_page, Some("updates"), "Updates");
     updates_page_ref.set_icon_name(Some(""));
+    let tools_page_ref = view_stack.add_titled(&tools_page, Some("tools"), "Tools");
+    tools_page_ref.set_icon_name(Some(""));
     updates_page_ref.set_badge_number(0);
     view_stack.set_vexpand(true);
 
@@ -440,9 +455,14 @@ fn build_ui(app: &adw::Application) {
     updates_content.append(&updates_badge);
     updates_button.set_child(Some(&updates_content));
 
+    let tools_button = gtk::ToggleButton::builder().label("Tools").build();
+    tools_button.add_css_class("flat");
+    tools_button.set_group(Some(&discover_button));
+
     switcher_box.append(&discover_button);
     switcher_box.append(&installed_button);
     switcher_box.append(&updates_button);
+    switcher_box.append(&tools_button);
 
     content.append(&switcher_box);
     content.append(&view_stack);
@@ -453,10 +473,12 @@ fn build_ui(app: &adw::Application) {
         discover: discover_widgets,
         installed: installed_widgets,
         updates: updates_widgets,
+        tools: tools_widgets,
         updates_page: updates_page_ref,
         discover_button: discover_button.clone(),
         installed_button: installed_button.clone(),
         updates_button: updates_button.clone(),
+        tools_button: tools_button.clone(),
         updates_badge: updates_badge.clone(),
     };
 
@@ -583,54 +605,68 @@ fn build_theme_icon(mode: ThemeGlyph) -> gtk::DrawingArea {
     area
 }
 
-#[derive(Clone, Debug)]
-struct PackageInfo {
-    name: String,
-    version: String,
-    description: String,
-    installed: bool,
-    previous_version: Option<String>,
-    download_size: Option<String>,
-    changelog: Option<String>,
-    download_bytes: Option<u64>,
-    repository: Option<String>,
-    build_date: Option<DateTime<Utc>>,
-    first_seen: Option<DateTime<Utc>>,
-    name_lower: Arc<str>,
-    version_lower: Arc<str>,
-    description_lower: Arc<str>,
+#[derive(Default)]
+struct MaintenanceActionState {
+    running: bool,
+    last_success: Option<bool>,
+    last_message: Option<String>,
+    last_stdout: Option<String>,
+    last_stderr: Option<String>,
+    last_finished_at: Option<DateTime<Utc>>,
 }
 
-fn lowercase_cache(value: &str) -> Arc<str> {
-    if value.is_empty() {
-        Arc::<str>::from("")
-    } else {
-        Arc::<str>::from(value.to_lowercase())
-    }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MaintenanceTask {
+    Cleanup,
+    Pkgdb,
+    Reconfigure,
+    Alternatives,
 }
 
-impl PackageInfo {
-    fn set_version(&mut self, version: String) {
-        self.version = version;
-        self.version_lower = lowercase_cache(&self.version);
-    }
-
-    fn set_description(&mut self, description: String) {
-        self.description = description;
-        self.description_lower = lowercase_cache(&self.description);
-    }
+#[derive(Clone, Copy)]
+struct MaintenanceCopy {
+    idle_text: &'static str,
+    running_text: &'static str,
+    success_message: &'static str,
+    failure_prefix: &'static str,
+    success_toast: &'static str,
+    failure_toast: &'static str,
 }
 
-#[derive(Debug)]
-struct CommandResult {
-    code: Option<i32>,
-    stdout: String,
-    stderr: String,
-}
-
-impl CommandResult {
-    fn success(&self) -> bool {
-        self.code.unwrap_or(-1) == 0
+fn maintenance_copy(task: MaintenanceTask) -> MaintenanceCopy {
+    match task {
+        MaintenanceTask::Cleanup => MaintenanceCopy {
+            idle_text: "Haven't run this cleanup yet.",
+            running_text: "Tidying unused packages...",
+            success_message: "Cleanup finished without finding any stragglers.",
+            failure_prefix: "Cleanup ran into an issue",
+            success_toast: "Cleanup complete.",
+            failure_toast: "Cleanup failed.",
+        },
+        MaintenanceTask::Pkgdb => MaintenanceCopy {
+            idle_text: "No database check yet.",
+            running_text: "Reviewing the package database...",
+            success_message: "Package database check came back clean.",
+            failure_prefix: "Package database check hit a snag",
+            success_toast: "Package database check complete.",
+            failure_toast: "Package database check failed.",
+        },
+        MaintenanceTask::Reconfigure => MaintenanceCopy {
+            idle_text: "Haven't reconfigured anything this session.",
+            running_text: "Re-running every package's setup...",
+            success_message: "Reconfigure finished. Services should be up to date.",
+            failure_prefix: "Reconfigure didn't finish",
+            success_toast: "Reconfigure complete.",
+            failure_toast: "Reconfigure failed.",
+        },
+        MaintenanceTask::Alternatives => MaintenanceCopy {
+            idle_text: "Haven't opened the alternatives list yet.",
+            running_text: "Collecting the alternatives list...",
+            success_message: "Alternatives list loaded.",
+            failure_prefix: "Couldn't load alternatives",
+            success_toast: "Alternatives list ready.",
+            failure_toast: "Failed to load alternatives.",
+        },
     }
 }
 
@@ -696,6 +732,10 @@ struct AppState {
     footer_message: Option<String>,
     notify_updates: bool,
     updates_notification_sent: bool,
+    maintenance_cleanup: MaintenanceActionState,
+    maintenance_pkgdb: MaintenanceActionState,
+    maintenance_reconfigure: MaintenanceActionState,
+    maintenance_alternatives: MaintenanceActionState,
 }
 
 struct AppWidgets {
@@ -704,10 +744,12 @@ struct AppWidgets {
     discover: DiscoverWidgets,
     installed: InstalledWidgets,
     updates: UpdatesWidgets,
+    tools: ToolsWidgets,
     updates_page: adw::ViewStackPage,
     discover_button: gtk::ToggleButton,
     installed_button: gtk::ToggleButton,
     updates_button: gtk::ToggleButton,
+    tools_button: gtk::ToggleButton,
     updates_badge: gtk::Label,
 }
 
@@ -847,17 +889,19 @@ struct UpdatesWidgets {
     detail_update_button: gtk::Button,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-enum SpotlightCategory {
-    Browsers,
-    Chat,
-    Games,
-    Email,
-    Productivity,
-    Utilities,
-    Graphics,
-    Music,
-    Video,
+struct ToolsWidgets {
+    cleanup_button: gtk::Button,
+    cleanup_spinner: gtk::Spinner,
+    cleanup_status: gtk::Label,
+    pkgdb_button: gtk::Button,
+    pkgdb_spinner: gtk::Spinner,
+    pkgdb_status: gtk::Label,
+    reconfigure_button: gtk::Button,
+    reconfigure_spinner: gtk::Spinner,
+    reconfigure_status: gtk::Label,
+    alternatives_button: gtk::Button,
+    alternatives_spinner: gtk::Spinner,
+    alternatives_status: gtk::Label,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
@@ -865,223 +909,6 @@ enum DiscoverMode {
     #[default]
     Spotlight,
     Search,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum StartPagePreference {
-    Discover,
-    LastVisited,
-}
-
-impl Default for StartPagePreference {
-    fn default() -> Self {
-        StartPagePreference::Discover
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum UpdateCheckFrequency {
-    Daily,
-    Weekly,
-}
-
-impl Default for UpdateCheckFrequency {
-    fn default() -> Self {
-        UpdateCheckFrequency::Daily
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum ThemePreference {
-    System,
-    Light,
-    Dark,
-}
-
-impl Default for ThemePreference {
-    fn default() -> Self {
-        ThemePreference::System
-    }
-}
-
-impl ThemePreference {
-    fn key(self) -> &'static str {
-        match self {
-            ThemePreference::System => "system",
-            ThemePreference::Light => "light",
-            ThemePreference::Dark => "dark",
-        }
-    }
-
-    fn from_key(value: &str) -> Self {
-        match value {
-            "light" => ThemePreference::Light,
-            "dark" => ThemePreference::Dark,
-            _ => ThemePreference::System,
-        }
-    }
-
-    fn apply(self, style_manager: &adw::StyleManager) {
-        match self {
-            ThemePreference::System => style_manager.set_color_scheme(adw::ColorScheme::Default),
-            ThemePreference::Light => style_manager.set_color_scheme(adw::ColorScheme::ForceLight),
-            ThemePreference::Dark => style_manager.set_color_scheme(adw::ColorScheme::ForceDark),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AppSettings {
-    #[serde(default)]
-    window_width: Option<i32>,
-    #[serde(default)]
-    window_height: Option<i32>,
-    #[serde(default)]
-    start_page: StartPagePreference,
-    #[serde(default)]
-    last_page: Option<String>,
-    #[serde(default = "default_auto_check_enabled")]
-    auto_check_enabled: bool,
-    #[serde(default)]
-    auto_check_frequency: UpdateCheckFrequency,
-    #[serde(default = "default_confirm_pref")]
-    confirm_install: bool,
-    #[serde(default = "default_confirm_pref")]
-    confirm_remove: bool,
-    #[serde(default)]
-    theme_preference: ThemePreference,
-    #[serde(default = "default_notify_updates")]
-    notify_updates: bool,
-}
-
-fn default_auto_check_enabled() -> bool {
-    true
-}
-
-fn default_confirm_pref() -> bool {
-    true
-}
-
-fn default_notify_updates() -> bool {
-    true
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            window_width: None,
-            window_height: None,
-            start_page: StartPagePreference::Discover,
-            last_page: Some("discover".to_string()),
-            auto_check_enabled: default_auto_check_enabled(),
-            auto_check_frequency: UpdateCheckFrequency::Daily,
-            confirm_install: default_confirm_pref(),
-            confirm_remove: default_confirm_pref(),
-            theme_preference: ThemePreference::System,
-            notify_updates: default_notify_updates(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-struct SpotlightCache {
-    generated_at: Option<DateTime<Utc>>,
-    packages: HashMap<String, PackageInfo>,
-}
-
-struct SpotlightRefreshOutcome {
-    cache: SpotlightCache,
-    recent: Vec<PackageInfo>,
-    categories: HashMap<SpotlightCategory, Vec<PackageInfo>>,
-    refreshed_at: DateTime<Utc>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct SpotlightCacheFile {
-    version: u32,
-    generated_at: Option<String>,
-    packages: Vec<SpotlightCacheEntryData>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct SpotlightCacheEntryData {
-    name: String,
-    version: String,
-    description: String,
-    repository: Option<String>,
-    build_date: Option<String>,
-    first_seen: Option<String>,
-}
-
-struct RemotePackageMetadata {
-    name: String,
-    version: String,
-    description: String,
-    repository: Option<String>,
-    build_date: Option<DateTime<Utc>>,
-}
-
-fn category_allowlist(category: SpotlightCategory) -> &'static [&'static str] {
-    match category {
-        SpotlightCategory::Browsers => &[
-            "firefox",
-            "chromium",
-            "ungoogled-chromium",
-            "falkon",
-            "surf",
-        ],
-        SpotlightCategory::Chat => &[
-            "element-desktop",
-            "signal-desktop",
-            "fractal",
-            "weechat",
-            "discord",
-        ],
-        SpotlightCategory::Games => &["steam", "lutris", "minetest", "supertuxkart", "0ad"],
-        SpotlightCategory::Email => &["thunderbird", "geary", "claws-mail", "mutt", "kmail"],
-        SpotlightCategory::Productivity => &[
-            "libreoffice",
-            "onlyoffice-desktopeditors",
-            "gnumeric",
-            "abiword",
-            "zim",
-        ],
-        SpotlightCategory::Utilities => &["htop", "ripgrep", "tmux", "neovim", "git"],
-        SpotlightCategory::Graphics => &["gimp", "inkscape", "krita", "blender", "darktable"],
-        SpotlightCategory::Music => &["audacity", "ardour", "lmms", "hydrogen", "mpd"],
-        SpotlightCategory::Video => &["vlc", "mpv", "kdenlive", "obs-studio", "handbrake"],
-    }
-}
-
-fn all_spotlight_categories() -> &'static [SpotlightCategory] {
-    &[
-        SpotlightCategory::Browsers,
-        SpotlightCategory::Chat,
-        SpotlightCategory::Email,
-        SpotlightCategory::Games,
-        SpotlightCategory::Graphics,
-        SpotlightCategory::Music,
-        SpotlightCategory::Productivity,
-        SpotlightCategory::Utilities,
-        SpotlightCategory::Video,
-    ]
-}
-
-fn category_display_name(category: SpotlightCategory) -> &'static str {
-    match category {
-        SpotlightCategory::Browsers => "Browsers",
-        SpotlightCategory::Chat => "Chat",
-        SpotlightCategory::Email => "E-mail",
-        SpotlightCategory::Games => "Games",
-        SpotlightCategory::Graphics => "Graphics",
-        SpotlightCategory::Music => "Music",
-        SpotlightCategory::Productivity => "Productivity",
-        SpotlightCategory::Utilities => "Utilities",
-        SpotlightCategory::Video => "Video",
-    }
 }
 
 fn format_relative_time(timestamp: DateTime<Utc>) -> String {
@@ -1118,554 +945,11 @@ fn format_relative_time(timestamp: DateTime<Utc>) -> String {
     timestamp.format("%Y-%m-%d %H:%M UTC").to_string()
 }
 
-fn parse_cached_datetime(value: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
-}
-
-fn format_cached_datetime(value: &DateTime<Utc>) -> String {
-    value.to_rfc3339()
-}
-
 fn glib_datetime_to_chrono(dt: &glib::DateTime) -> Option<DateTime<Utc>> {
     let utc = dt.to_timezone(&glib::TimeZone::utc()).ok()?;
     let seconds = utc.to_unix();
     let micros = utc.microsecond() as i64;
     DateTime::<Utc>::from_timestamp_micros(seconds * 1_000_000 + micros)
-}
-fn parse_build_date_field(value: &str) -> Option<DateTime<Utc>> {
-    let trimmed = value.trim().trim_matches(|c| c == '"' || c == '\'');
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if let Some((date_part, tz_name)) = trimmed.rsplit_once(' ') {
-        if tz_name.chars().all(|c| c.is_ascii_alphabetic()) {
-            if let Some(offset) = timezone_offset_from_abbreviation(tz_name) {
-                if let Some(result) = parse_with_fixed_offset(date_part.trim(), offset) {
-                    return Some(result);
-                }
-            }
-        }
-    }
-
-    let mut iso_candidate = trimmed.replace(" UTC", "Z");
-    if !iso_candidate.contains('T') {
-        iso_candidate = iso_candidate.replace(' ', "T");
-    }
-    if let Ok(parsed) = DateTime::parse_from_rfc3339(&iso_candidate) {
-        return Some(parsed.with_timezone(&Utc));
-    }
-
-    if let Ok(parsed) = NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M:%S") {
-        return Some(Utc.from_utc_datetime(&parsed));
-    }
-
-    if let Ok(parsed) = NaiveDateTime::parse_from_str(trimmed, "%Y-%m-%d %H:%M") {
-        return Some(Utc.from_utc_datetime(&parsed));
-    }
-
-    None
-}
-
-fn parse_with_fixed_offset(date_part: &str, offset: FixedOffset) -> Option<DateTime<Utc>> {
-    const FORMATS: [&str; 2] = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"];
-
-    for format in FORMATS {
-        if let Ok(naive) = NaiveDateTime::parse_from_str(date_part, format) {
-            match offset.from_local_datetime(&naive) {
-                LocalResult::Single(dt) => return Some(dt.with_timezone(&Utc)),
-                LocalResult::Ambiguous(first, second) => {
-                    return Some(first.max(second).with_timezone(&Utc));
-                }
-                LocalResult::None => continue,
-            }
-        }
-    }
-
-    None
-}
-
-fn timezone_offset_from_abbreviation(name: &str) -> Option<FixedOffset> {
-    match name {
-        "UTC" | "GMT" => FixedOffset::east_opt(0),
-        "CET" => FixedOffset::east_opt(3600),
-        "CEST" => FixedOffset::east_opt(7200),
-        "EET" => FixedOffset::east_opt(7200),
-        "EEST" => FixedOffset::east_opt(10800),
-        "PST" => FixedOffset::west_opt(8 * 3600),
-        "PDT" => FixedOffset::west_opt(7 * 3600),
-        "MST" => FixedOffset::west_opt(7 * 3600),
-        "MDT" => FixedOffset::west_opt(6 * 3600),
-        "CST" => FixedOffset::west_opt(6 * 3600),
-        "CDT" => FixedOffset::west_opt(5 * 3600),
-        "EST" => FixedOffset::west_opt(5 * 3600),
-        "EDT" => FixedOffset::west_opt(4 * 3600),
-        "BST" => FixedOffset::east_opt(3600),
-        "IST" => FixedOffset::east_opt(19800),
-        "JST" => FixedOffset::east_opt(9 * 3600),
-        _ => None,
-    }
-}
-
-fn spotlight_cache_dir() -> Option<PathBuf> {
-    if let Ok(custom) = env::var("NEBULA_STORE_CACHE_DIR") {
-        let trimmed = custom.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed));
-        }
-    }
-
-    if let Ok(cache_home) = env::var("XDG_CACHE_HOME") {
-        let trimmed = cache_home.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join("nebula-gtk"));
-        }
-    }
-
-    if let Ok(home) = env::var("HOME") {
-        let trimmed = home.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join(".cache").join("nebula-gtk"));
-        }
-    }
-
-    None
-}
-
-fn spotlight_cache_path() -> Option<PathBuf> {
-    spotlight_cache_dir().map(|dir| dir.join(SPOTLIGHT_CACHE_FILE))
-}
-
-fn app_config_dir() -> Option<PathBuf> {
-    if let Ok(custom) = env::var("NEBULA_STORE_CONFIG_DIR") {
-        let trimmed = custom.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed));
-        }
-    }
-
-    if let Ok(config_home) = env::var("XDG_CONFIG_HOME") {
-        let trimmed = config_home.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join("nebula-gtk"));
-        }
-    }
-
-    if let Ok(home) = env::var("HOME") {
-        let trimmed = home.trim();
-        if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join(".config").join("nebula-gtk"));
-        }
-    }
-
-    None
-}
-
-fn app_settings_path() -> Option<PathBuf> {
-    app_config_dir().map(|dir| dir.join(APP_SETTINGS_FILE))
-}
-
-fn load_app_settings() -> AppSettings {
-    let Some(path) = app_settings_path() else {
-        return AppSettings::default();
-    };
-
-    let Ok(content) = fs::read_to_string(&path) else {
-        return AppSettings::default();
-    };
-
-    serde_json::from_str(&content).unwrap_or_default()
-}
-
-fn save_app_settings(settings: &AppSettings) -> Result<(), String> {
-    let Some(path) = app_settings_path() else {
-        return Err("Unable to determine settings directory".to_string());
-    };
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("Failed to create settings directory: {}", err))?;
-    }
-
-    let data = serde_json::to_string_pretty(settings)
-        .map_err(|err| format!("Failed to serialize settings: {}", err))?;
-
-    fs::write(&path, data).map_err(|err| format!("Failed to write settings: {}", err))
-}
-
-fn load_spotlight_cache_from_disk() -> SpotlightCache {
-    let Some(path) = spotlight_cache_path() else {
-        return SpotlightCache::default();
-    };
-
-    let Ok(content) = fs::read_to_string(&path) else {
-        return SpotlightCache::default();
-    };
-
-    let Ok(file) = serde_json::from_str::<SpotlightCacheFile>(&content) else {
-        return SpotlightCache::default();
-    };
-
-    if file.version != SPOTLIGHT_CACHE_VERSION {
-        return SpotlightCache::default();
-    }
-
-    let mut cache = SpotlightCache::default();
-    cache.generated_at = file.generated_at.as_deref().and_then(parse_cached_datetime);
-
-    for entry in file.packages {
-        if entry.name.is_empty() {
-            continue;
-        }
-
-        let build_date = entry.build_date.as_deref().and_then(parse_cached_datetime);
-        let first_seen = entry.first_seen.as_deref().and_then(parse_cached_datetime);
-
-        let name = entry.name;
-        let version = entry.version;
-        let description = entry.description;
-        let repository = entry.repository;
-
-        let info = PackageInfo {
-            name_lower: lowercase_cache(&name),
-            version_lower: lowercase_cache(&version),
-            description_lower: lowercase_cache(&description),
-            name,
-            version,
-            description,
-            installed: false,
-            previous_version: None,
-            download_size: None,
-            changelog: None,
-            download_bytes: None,
-            repository,
-            build_date,
-            first_seen,
-        };
-
-        cache.packages.insert(info.name.clone(), info);
-    }
-
-    prune_spotlight_cache(&mut cache);
-
-    cache
-}
-
-fn save_spotlight_cache_to_disk(cache: &SpotlightCache) -> Result<(), String> {
-    let Some(path) = spotlight_cache_path() else {
-        return Err("Unable to determine spotlight cache directory".to_string());
-    };
-
-    if let Some(parent) = path.parent() {
-        if let Err(err) = fs::create_dir_all(parent) {
-            return Err(format!("Failed to create cache directory: {}", err));
-        }
-    }
-
-    let packages: Vec<SpotlightCacheEntryData> = cache
-        .packages
-        .values()
-        .map(|info| SpotlightCacheEntryData {
-            name: info.name.clone(),
-            version: info.version.clone(),
-            description: info.description.clone(),
-            repository: info.repository.clone(),
-            build_date: info.build_date.as_ref().map(format_cached_datetime),
-            first_seen: info.first_seen.as_ref().map(format_cached_datetime),
-        })
-        .collect();
-
-    let file = SpotlightCacheFile {
-        version: SPOTLIGHT_CACHE_VERSION,
-        generated_at: cache.generated_at.as_ref().map(format_cached_datetime),
-        packages,
-    };
-
-    let data = serde_json::to_string_pretty(&file)
-        .map_err(|err| format!("Failed to serialize spotlight cache: {}", err))?;
-
-    fs::write(&path, data).map_err(|err| format!("Failed to write spotlight cache: {}", err))
-}
-
-fn prune_spotlight_cache(cache: &mut SpotlightCache) {
-    if cache.packages.len() <= SPOTLIGHT_CACHE_MAX_ENTRIES {
-        return;
-    }
-
-    let mut entries: Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)> = cache
-        .packages
-        .iter()
-        .map(|(name, info)| (name.clone(), info.build_date, info.first_seen))
-        .collect();
-
-    entries.sort_by(|a, b| {
-        b.1.cmp(&a.1)
-            .then_with(|| b.2.cmp(&a.2))
-            .then_with(|| a.0.cmp(&b.0))
-    });
-
-    for (name, _, _) in entries.into_iter().skip(SPOTLIGHT_CACHE_MAX_ENTRIES) {
-        cache.packages.remove(&name);
-    }
-}
-
-fn fetch_remote_spotlight_metadata() -> Result<Vec<RemotePackageMetadata>, String> {
-    let listings = Command::new("xbps-query")
-        .args(["-R", "--regex", "-s", "."])
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
-
-    if !listings.status.success() {
-        let stderr = String::from_utf8_lossy(&listings.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let build_dates = Command::new("xbps-query")
-        .args(["-R", "--regex", "-s", ".", "-p", "build-date"])
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
-
-    if !build_dates.status.success() {
-        let stderr = String::from_utf8_lossy(&build_dates.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let mut records: HashMap<String, RemotePackageMetadata> = HashMap::new();
-
-    for line in String::from_utf8_lossy(&listings.stdout).lines() {
-        if let Some((name, version, description)) = parse_search_listing_line(line) {
-            let entry = records
-                .entry(name.clone())
-                .or_insert_with(|| RemotePackageMetadata {
-                    name: name.clone(),
-                    version: version.clone(),
-                    description: description.clone(),
-                    repository: None,
-                    build_date: None,
-                });
-
-            entry.version = version;
-            if entry.description.is_empty() {
-                entry.description = description;
-            }
-        }
-    }
-
-    for line in String::from_utf8_lossy(&build_dates.stdout).lines() {
-        if let Some((name, version, build_date, repository)) = parse_build_date_listing_line(line) {
-            let entry = records
-                .entry(name.clone())
-                .or_insert_with(|| RemotePackageMetadata {
-                    name: name.clone(),
-                    version: version.clone(),
-                    description: String::new(),
-                    repository: repository.clone(),
-                    build_date,
-                });
-
-            entry.version = version;
-            if entry.repository.is_none() {
-                entry.repository = repository;
-            }
-            if build_date.is_some() {
-                entry.build_date = build_date;
-            }
-        }
-    }
-
-    Ok(records.into_values().collect())
-}
-
-fn parse_search_listing_line(line: &str) -> Option<(String, String, String)> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() || !trimmed.starts_with('[') {
-        return None;
-    }
-
-    let payload = trimmed.get(3..)?.trim_start();
-    let mut split_index = None;
-    for (idx, ch) in payload.char_indices() {
-        if ch.is_whitespace() {
-            split_index = Some(idx);
-            break;
-        }
-    }
-
-    let idx = split_index?;
-    let identifier = payload[..idx].trim();
-    if identifier.is_empty() {
-        return None;
-    }
-    let description = payload[idx..].trim().to_string();
-    let (name, version) = split_package_identifier(identifier);
-
-    Some((name, version, description))
-}
-
-fn parse_build_date_listing_line(
-    line: &str,
-) -> Option<(String, String, Option<DateTime<Utc>>, Option<String>)> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let (identifier, rest) = trimmed.split_once(':')?;
-    let identifier = identifier.trim();
-    if identifier.is_empty() {
-        return None;
-    }
-
-    let mut remainder = rest.trim();
-    let mut repository = None;
-    if let Some(open_paren) = remainder.rfind('(') {
-        if remainder.ends_with(')') && open_paren < remainder.len() {
-            let repo_candidate = &remainder[open_paren + 1..remainder.len() - 1].trim();
-            if !repo_candidate.is_empty() {
-                repository = Some(repo_candidate.to_string());
-            }
-            remainder = remainder[..open_paren].trim_end();
-        }
-    }
-
-    let build_date = parse_build_date_field(remainder);
-    let (name, version) = split_package_identifier(identifier);
-    Some((name, version, build_date, repository))
-}
-
-fn build_category_results(cache: &SpotlightCache) -> HashMap<SpotlightCategory, Vec<PackageInfo>> {
-    let mut results = HashMap::new();
-
-    for category in all_spotlight_categories() {
-        let mut packages = Vec::new();
-        for name in category_allowlist(*category) {
-            if let Some(info) = cache.packages.get(*name) {
-                packages.push(info.clone());
-            }
-        }
-        results.insert(*category, packages);
-    }
-
-    results
-}
-
-fn compute_spotlight_sections(cache: &SpotlightCache, now: DateTime<Utc>) -> Vec<PackageInfo> {
-    let window_start = now - Duration::days(SPOTLIGHT_WINDOW_DAYS);
-
-    let mut recent: Vec<PackageInfo> = cache
-        .packages
-        .values()
-        .filter(|pkg| pkg.build_date.map_or(false, |dt| dt >= window_start))
-        .cloned()
-        .collect();
-
-    recent.sort_by(|a, b| {
-        b.build_date
-            .cmp(&a.build_date)
-            .then_with(|| b.first_seen.cmp(&a.first_seen))
-            .then_with(|| a.name.cmp(&b.name))
-    });
-
-    if recent.is_empty() {
-        recent = cache.packages.values().cloned().collect();
-        recent.sort_by(|a, b| {
-            b.build_date
-                .cmp(&a.build_date)
-                .then_with(|| b.first_seen.cmp(&a.first_seen))
-                .then_with(|| a.name.cmp(&b.name))
-        });
-    }
-    recent.truncate(SPOTLIGHT_RECENT_LIMIT);
-
-    recent
-}
-
-fn refresh_spotlight_cache(mut cache: SpotlightCache) -> Result<SpotlightRefreshOutcome, String> {
-    let now = Utc::now();
-    let remote_packages = fetch_remote_spotlight_metadata()?;
-
-    for remote in remote_packages {
-        if remote.name.is_empty() {
-            continue;
-        }
-
-        let RemotePackageMetadata {
-            name,
-            version,
-            description,
-            repository,
-            build_date,
-        } = remote;
-
-        let build_date_for_entry = build_date.clone();
-
-        let entry = cache
-            .packages
-            .entry(name.clone())
-            .or_insert_with(|| PackageInfo {
-                name_lower: lowercase_cache(&name),
-                version_lower: lowercase_cache(&version),
-                description_lower: lowercase_cache(&description),
-                name: name.clone(),
-                version: version.clone(),
-                description: description.clone(),
-                installed: false,
-                previous_version: None,
-                download_size: None,
-                changelog: None,
-                download_bytes: None,
-                repository: repository.clone(),
-                build_date: build_date_for_entry.clone(),
-                first_seen: Some(now),
-            });
-
-        let version_changed = entry.version != version;
-        if version_changed {
-            entry.previous_version = Some(entry.version.clone());
-        }
-
-        entry.set_version(version.clone());
-        entry.set_description(description.clone());
-        entry.repository = repository.clone();
-
-        if let Some(date) = build_date_for_entry.clone() {
-            entry.build_date = Some(date);
-        }
-
-        if entry.first_seen.is_none() {
-            entry.first_seen = Some(now);
-        }
-    }
-    prune_spotlight_cache(&mut cache);
-    cache.generated_at = Some(now);
-
-    let categories = build_category_results(&cache);
-
-    let mut recent = compute_spotlight_sections(&cache, now);
-    recent.truncate(SPOTLIGHT_RECENT_LIMIT);
-
-    #[cfg(debug_assertions)]
-    {
-        eprintln!(
-            "Spotlight refresh fetched {} packages; recent={}",
-            cache.packages.len(),
-            recent.len(),
-        );
-    }
-
-    Ok(SpotlightRefreshOutcome {
-        cache,
-        recent,
-        categories,
-        refreshed_at: now,
-    })
-}
-
-#[derive(Clone, Debug)]
-struct DependencyInfo {
-    name: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1754,6 +1038,10 @@ enum AppMessage {
     },
     SpotlightFailed {
         error: String,
+    },
+    MaintenanceFinished {
+        task: MaintenanceTask,
+        result: Result<CommandResult, String>,
     },
 }
 
@@ -2011,6 +1299,35 @@ impl AppController {
             }),
         );
 
+        self.widgets.tools_button.connect_toggled(
+            glib::clone!(@strong self as controller => move |btn| {
+                if btn.is_active() {
+                    controller.switch_to_page("tools");
+                }
+            }),
+        );
+
+        self.widgets.tools.cleanup_button.connect_clicked(
+            glib::clone!(@strong self as controller => move |_| {
+                controller.on_cleanup_requested();
+            }),
+        );
+        self.widgets.tools.pkgdb_button.connect_clicked(
+            glib::clone!(@strong self as controller => move |_| {
+                controller.on_pkgdb_requested();
+            }),
+        );
+        self.widgets.tools.reconfigure_button.connect_clicked(
+            glib::clone!(@strong self as controller => move |_| {
+                controller.on_reconfigure_requested();
+            }),
+        );
+        self.widgets.tools.alternatives_button.connect_clicked(
+            glib::clone!(@strong self as controller => move |_| {
+                controller.on_alternatives_requested();
+            }),
+        );
+
         self.widgets
             .installed
             .filter_dropdown
@@ -2125,6 +1442,7 @@ impl AppController {
 
         self.update_footer_text();
         self.update_updates_badge();
+        self.update_tools_actions();
         self.on_view_changed();
     }
 
@@ -2169,6 +1487,13 @@ impl AppController {
                     self.widgets.updates_button.set_active(true);
                 } else {
                     self.switch_to_page("updates");
+                }
+            }
+            "tools" => {
+                if !self.widgets.tools_button.is_active() {
+                    self.widgets.tools_button.set_active(true);
+                } else {
+                    self.switch_to_page("tools");
                 }
             }
             _ => {
@@ -2568,6 +1893,7 @@ impl AppController {
                 }
             }
             Some("updates") => if !self.widgets.updates_button.is_active() {},
+            Some("tools") => if !self.widgets.tools_button.is_active() {},
             _ => {}
         }
 
@@ -2873,6 +2199,58 @@ impl AppController {
         });
     }
 
+    fn on_cleanup_requested(self: &Rc<Self>) {
+        self.start_maintenance_task(MaintenanceTask::Cleanup);
+    }
+
+    fn on_pkgdb_requested(self: &Rc<Self>) {
+        self.start_maintenance_task(MaintenanceTask::Pkgdb);
+    }
+
+    fn on_reconfigure_requested(self: &Rc<Self>) {
+        self.start_maintenance_task(MaintenanceTask::Reconfigure);
+    }
+
+    fn on_alternatives_requested(self: &Rc<Self>) {
+        self.start_maintenance_task(MaintenanceTask::Alternatives);
+    }
+
+    fn start_maintenance_task(self: &Rc<Self>, task: MaintenanceTask) {
+        {
+            let mut state = self.state.borrow_mut();
+            let action_state = match task {
+                MaintenanceTask::Cleanup => &mut state.maintenance_cleanup,
+                MaintenanceTask::Pkgdb => &mut state.maintenance_pkgdb,
+                MaintenanceTask::Reconfigure => &mut state.maintenance_reconfigure,
+                MaintenanceTask::Alternatives => &mut state.maintenance_alternatives,
+            };
+
+            if action_state.running {
+                return;
+            }
+
+            action_state.running = true;
+            action_state.last_success = None;
+            action_state.last_message = None;
+            action_state.last_stdout = None;
+            action_state.last_stderr = None;
+            action_state.last_finished_at = None;
+        }
+
+        self.update_tools_actions();
+
+        let sender = self.sender.clone();
+        thread::spawn(move || {
+            let result = match task {
+                MaintenanceTask::Cleanup => run_xbps_remove_orphans(),
+                MaintenanceTask::Pkgdb => run_xbps_pkgdb_check(),
+                MaintenanceTask::Reconfigure => run_xbps_reconfigure_all(),
+                MaintenanceTask::Alternatives => run_xbps_alternatives_list(),
+            };
+            let _ = sender.send(AppMessage::MaintenanceFinished { task, result });
+        });
+    }
+
     fn on_search_row_selected(self: &Rc<Self>, row: Option<gtk::ListBoxRow>) {
         let selected_index = row.as_ref().map(|r| r.index() as usize);
         let navigation = {
@@ -2951,7 +2329,259 @@ impl AppController {
             AppMessage::SpotlightFailed { error } => {
                 self.finish_spotlight_failed(error);
             }
+            AppMessage::MaintenanceFinished { task, result } => {
+                self.finish_maintenance(task, result);
+            }
         }
+    }
+
+    fn finish_maintenance(
+        self: &Rc<Self>,
+        task: MaintenanceTask,
+        result: Result<CommandResult, String>,
+    ) {
+        let finished_at = Utc::now();
+        let copy = maintenance_copy(task);
+
+        let (success, status_message, toast_message, stdout_store, stderr_store) = match result {
+            Ok(cmd_result) => {
+                let stdout_summary = summarize_output_line(&cmd_result.stdout);
+                let stderr_summary = summarize_output_line(&cmd_result.stderr);
+
+                if cmd_result.success() {
+                    let mut status_message = copy.success_message.to_string();
+                    if let Some(line) = stdout_summary.clone() {
+                        status_message.push(' ');
+                        status_message.push_str(&line);
+                    }
+                    let toast_message = copy.success_toast.to_string();
+                    (
+                        true,
+                        status_message,
+                        toast_message,
+                        Some(cmd_result.stdout.clone()),
+                        Some(cmd_result.stderr.clone()),
+                    )
+                } else {
+                    let detail = stderr_summary.clone().or(stdout_summary.clone());
+                    let status_message = if let Some(line) = detail {
+                        format!("{}: {}", copy.failure_prefix, line)
+                    } else if let Some(code) = cmd_result.code {
+                        format!("{} (exit code {}).", copy.failure_prefix, code)
+                    } else {
+                        format!("{}.", copy.failure_prefix)
+                    };
+                    let toast_message = copy.failure_toast.to_string();
+                    (
+                        false,
+                        status_message,
+                        toast_message,
+                        Some(cmd_result.stdout.clone()),
+                        Some(cmd_result.stderr.clone()),
+                    )
+                }
+            }
+            Err(err) => {
+                let status_message = format!("{}: {}", copy.failure_prefix, err);
+                let toast_message = copy.failure_toast.to_string();
+                (false, status_message, toast_message, None, Some(err))
+            }
+        };
+
+        {
+            let mut state = self.state.borrow_mut();
+            let action_state = match task {
+                MaintenanceTask::Cleanup => &mut state.maintenance_cleanup,
+                MaintenanceTask::Pkgdb => &mut state.maintenance_pkgdb,
+                MaintenanceTask::Reconfigure => &mut state.maintenance_reconfigure,
+                MaintenanceTask::Alternatives => &mut state.maintenance_alternatives,
+            };
+            action_state.running = false;
+            action_state.last_success = Some(success);
+            action_state.last_message = Some(status_message.clone());
+            action_state.last_stdout = stdout_store.clone();
+            action_state.last_stderr = stderr_store.clone();
+            action_state.last_finished_at = Some(finished_at);
+        }
+
+        self.update_tools_actions();
+
+        if success && matches!(task, MaintenanceTask::Alternatives) {
+            if let Some(stdout) = stdout_store {
+                self.show_alternatives_dialog(&stdout);
+            }
+        }
+
+        self.show_toast(&toast_message);
+    }
+
+    fn update_tools_actions(&self) {
+        let state = self.state.borrow();
+        self.update_maintenance_row(
+            MaintenanceTask::Cleanup,
+            &state.maintenance_cleanup,
+            &self.widgets.tools.cleanup_button,
+            &self.widgets.tools.cleanup_spinner,
+            &self.widgets.tools.cleanup_status,
+        );
+        self.update_maintenance_row(
+            MaintenanceTask::Pkgdb,
+            &state.maintenance_pkgdb,
+            &self.widgets.tools.pkgdb_button,
+            &self.widgets.tools.pkgdb_spinner,
+            &self.widgets.tools.pkgdb_status,
+        );
+        self.update_maintenance_row(
+            MaintenanceTask::Reconfigure,
+            &state.maintenance_reconfigure,
+            &self.widgets.tools.reconfigure_button,
+            &self.widgets.tools.reconfigure_spinner,
+            &self.widgets.tools.reconfigure_status,
+        );
+        self.update_maintenance_row(
+            MaintenanceTask::Alternatives,
+            &state.maintenance_alternatives,
+            &self.widgets.tools.alternatives_button,
+            &self.widgets.tools.alternatives_spinner,
+            &self.widgets.tools.alternatives_status,
+        );
+    }
+
+    fn update_maintenance_row(
+        &self,
+        task: MaintenanceTask,
+        state: &MaintenanceActionState,
+        button: &gtk::Button,
+        spinner: &gtk::Spinner,
+        status_label: &gtk::Label,
+    ) {
+        let copy = maintenance_copy(task);
+
+        if state.running {
+            button.set_sensitive(false);
+            spinner.set_visible(true);
+            spinner.start();
+            status_label.remove_css_class("error");
+            status_label.add_css_class("dim-label");
+            status_label.set_text(copy.running_text);
+            status_label.set_tooltip_text(None);
+            return;
+        }
+
+        spinner.stop();
+        spinner.set_visible(false);
+        button.set_sensitive(true);
+
+        let tooltip_text = match state.last_success {
+            Some(true) => state.last_stdout.as_ref().and_then(|text| {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(truncate_for_summary(trimmed, 512))
+                }
+            }),
+            Some(false) => state.last_stderr.as_ref().and_then(|text| {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(truncate_for_summary(trimmed, 512))
+                }
+            }),
+            None => None,
+        };
+        status_label.set_tooltip_text(tooltip_text.as_deref());
+
+        status_label.remove_css_class("error");
+        status_label.remove_css_class("dim-label");
+
+        let mut message = state
+            .last_message
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| copy.idle_text.to_string());
+
+        if let Some(finished_at) = state.last_finished_at {
+            let relative = format_relative_time(finished_at);
+            if state.last_message.is_some() {
+                let qualifier = match state.last_success {
+                    Some(true) => "Ran",
+                    Some(false) => "Attempted",
+                    None => "Ran",
+                };
+                message.push_str(" • ");
+                message.push_str(&format!("{} {}", qualifier, relative));
+            } else {
+                message.push_str(" Last run ");
+                message.push_str(&relative);
+                message.push('.');
+            }
+        }
+
+        if state.last_success == Some(false) {
+            status_label.add_css_class("error");
+        } else {
+            status_label.add_css_class("dim-label");
+        }
+
+        status_label.set_text(message.as_str());
+    }
+
+    fn show_alternatives_dialog(&self, output: &str) {
+        let dialog = gtk::Dialog::builder()
+            .transient_for(&self.window)
+            .modal(true)
+            .title("Available alternatives")
+            .default_width(520)
+            .default_height(420)
+            .build();
+        dialog.add_button("Close", gtk::ResponseType::Close);
+        dialog.connect_response(|dialog, _| dialog.close());
+
+        let content = dialog.content_area();
+        content.set_spacing(12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        let info_label = gtk::Label::builder()
+            .label("Here's what \"xbps-alternatives -l\" reported.")
+            .halign(gtk::Align::Start)
+            .xalign(0.0)
+            .wrap(true)
+            .wrap_mode(pango::WrapMode::WordChar)
+            .build();
+        info_label.add_css_class("dim-label");
+        content.append(&info_label);
+
+        let scroller = gtk::ScrolledWindow::builder()
+            .hexpand(true)
+            .vexpand(true)
+            .min_content_height(320)
+            .build();
+
+        let buffer = gtk::TextBuffer::new(None);
+        let trimmed = output.trim();
+        if trimmed.is_empty() {
+            buffer.set_text("No alternatives were reported.");
+        } else {
+            buffer.set_text(trimmed);
+        }
+
+        let text_view = gtk::TextView::builder()
+            .buffer(&buffer)
+            .editable(false)
+            .monospace(true)
+            .wrap_mode(gtk::WrapMode::None)
+            .build();
+        text_view.set_cursor_visible(false);
+
+        scroller.set_child(Some(&text_view));
+        content.append(&scroller);
+
+        dialog.present();
     }
 
     fn finish_search(self: &Rc<Self>, query: String, result: Result<Vec<PackageInfo>, String>) {
@@ -8919,6 +8549,191 @@ fn build_updates_page() -> (gtk::Box, UpdatesWidgets) {
     (container, widgets)
 }
 
+fn build_tools_page() -> (gtk::Box, ToolsWidgets) {
+    let container = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .build();
+    container.set_vexpand(true);
+    container.set_hexpand(true);
+
+    let clamp = adw::Clamp::builder()
+        .maximum_size(820)
+        .tightening_threshold(540)
+        .build();
+
+    let content = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(24)
+        .margin_top(32)
+        .margin_bottom(32)
+        .margin_start(32)
+        .margin_end(32)
+        .build();
+
+    clamp.set_child(Some(&content));
+    container.append(&clamp);
+
+    let header_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .build();
+
+    let title_label = gtk::Label::builder()
+        .label("Keep things running smoothly")
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
+        .build();
+    title_label.add_css_class("title-2");
+
+    let subtitle_label = gtk::Label::builder()
+        .label("A handful of maintenance helpers for the moments when Nebula needs a bit of attention.")
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
+        .build();
+    subtitle_label.add_css_class("dim-label");
+
+    header_box.append(&title_label);
+    header_box.append(&subtitle_label);
+    content.append(&header_box);
+
+    let quick_group = adw::PreferencesGroup::builder()
+        .title("Quick tidy-up")
+        .description("Short chores that keep Void Linux neat without getting in the way.")
+        .build();
+
+    let (cleanup_panel, cleanup_button, cleanup_status, cleanup_spinner) = build_tools_action_row(
+        "Remove orphaned packages",
+        "Sweep out dependencies nothing else needs.",
+        "Run cleanup",
+        "Runs \"xbps-remove -O\" to prune orphaned packages.",
+        maintenance_copy(MaintenanceTask::Cleanup).idle_text,
+    );
+    quick_group.add(&cleanup_panel);
+    content.append(&quick_group);
+
+    let repair_group = adw::PreferencesGroup::builder()
+        .title("Repair &amp; recovery")
+        .description(
+            "Reach for these when installs act strangely or the system had a rough shutdown.",
+        )
+        .build();
+
+    let (pkgdb_panel, pkgdb_button, pkgdb_status, pkgdb_spinner) = build_tools_action_row(
+        "Verify package database",
+        "Checks and repairs package metadata. Handy after forced power-offs.",
+        "Run verification",
+        "Runs \"xbps-pkgdb -a\" to verify package metadata.",
+        maintenance_copy(MaintenanceTask::Pkgdb).idle_text,
+    );
+    repair_group.add(&pkgdb_panel);
+
+    let (reconfigure_panel, reconfigure_button, reconfigure_status, reconfigure_spinner) =
+        build_tools_action_row(
+            "Reconfigure everything",
+            "Replays post-install hooks for every package. Give it time to finish.",
+            "Run reconfigure",
+            "Runs \"xbps-reconfigure -a\" to re-run post-install hooks.",
+            maintenance_copy(MaintenanceTask::Reconfigure).idle_text,
+        );
+    repair_group.add(&reconfigure_panel);
+    content.append(&repair_group);
+
+    let alternatives_group = adw::PreferencesGroup::builder()
+        .title("Alternatives")
+        .description("Peek at which providers are currently registered before you switch defaults.")
+        .build();
+
+    let (alternatives_panel, alternatives_button, alternatives_status, alternatives_spinner) =
+        build_tools_action_row(
+            "List available alternatives",
+            "Shows every registered provider so you know what is installed.",
+            "Show list",
+            "Runs \"xbps-alternatives -l\" and displays the output.",
+            maintenance_copy(MaintenanceTask::Alternatives).idle_text,
+        );
+    alternatives_group.add(&alternatives_panel);
+    content.append(&alternatives_group);
+
+    let widgets = ToolsWidgets {
+        cleanup_button,
+        cleanup_spinner,
+        cleanup_status,
+        pkgdb_button,
+        pkgdb_spinner,
+        pkgdb_status,
+        reconfigure_button,
+        reconfigure_spinner,
+        reconfigure_status,
+        alternatives_button,
+        alternatives_spinner,
+        alternatives_status,
+    };
+
+    (container, widgets)
+}
+
+fn build_tools_action_row(
+    title: &str,
+    blurb: &str,
+    button_label: &str,
+    tooltip: &str,
+    initial_status: &str,
+) -> (gtk::Box, gtk::Button, gtk::Label, gtk::Spinner) {
+    let row = adw::ActionRow::builder()
+        .title(title)
+        .subtitle(blurb)
+        .build();
+    row.set_activatable(false);
+
+    let spinner = gtk::Spinner::new();
+    spinner.set_visible(false);
+    spinner.set_valign(gtk::Align::Center);
+    spinner.set_size_request(16, 16);
+
+    let button = gtk::Button::builder()
+        .label(button_label)
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .build();
+    button.set_focus_on_click(false);
+    if !tooltip.is_empty() {
+        button.set_tooltip_text(Some(tooltip));
+    }
+
+    let controls = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .build();
+    controls.append(&spinner);
+    controls.append(&button);
+    row.add_suffix(&controls);
+
+    let status_label = gtk::Label::builder()
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
+        .build();
+    status_label.add_css_class("caption");
+    status_label.add_css_class("dim-label");
+    status_label.set_text(initial_status);
+
+    let wrapper = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .build();
+    wrapper.append(&row);
+    wrapper.append(&status_label);
+
+    (wrapper, button, status_label, spinner)
+}
+
 fn build_package_row(pkg: &PackageInfo) -> adw::ActionRow {
     let subtitle = if pkg.description.is_empty() {
         pkg.version.clone()
@@ -8970,117 +8785,6 @@ fn build_package_row(pkg: &PackageInfo) -> adw::ActionRow {
     row
 }
 
-fn run_xbps_query_dependencies(package: &str) -> Result<Vec<DependencyInfo>, String> {
-    let output = Command::new("xbps-query")
-        .args(["-R", "--show", package])
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut dependencies = Vec::new();
-    let mut in_run_depends = false;
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(spec) = trimmed.strip_prefix("run_depends:") {
-            in_run_depends = true;
-            let spec = spec.trim().trim_matches(|c| c == '\'' || c == '"');
-            if !spec.is_empty() {
-                let name_part = spec
-                    .split(|c: char| matches!(c, '<' | '>' | '=' | ' '))
-                    .next()
-                    .unwrap_or(spec)
-                    .trim()
-                    .trim_end_matches('?');
-                if !name_part.is_empty() {
-                    dependencies.push(DependencyInfo {
-                        name: name_part.to_string(),
-                    });
-                }
-            }
-            continue;
-        }
-
-        if in_run_depends {
-            if trimmed.is_empty() {
-                in_run_depends = false;
-                continue;
-            }
-
-            let first_char = line.chars().next().unwrap_or_default();
-            if !first_char.is_whitespace() {
-                in_run_depends = false;
-                continue;
-            }
-
-            if trimmed.contains(':') {
-                in_run_depends = false;
-                continue;
-            }
-
-            let spec = trimmed.trim_matches(|c| c == '\'' || c == '"');
-            if spec.is_empty() {
-                continue;
-            }
-            let name_part = spec
-                .split(|c: char| matches!(c, '<' | '>' | '=' | ' '))
-                .next()
-                .unwrap_or(spec)
-                .trim()
-                .trim_end_matches('?');
-            if name_part.is_empty() {
-                continue;
-            }
-            dependencies.push(DependencyInfo {
-                name: name_part.to_string(),
-            });
-        }
-    }
-
-    dependencies.sort_by(|a, b| a.name.cmp(&b.name));
-    dependencies.dedup_by(|a, b| a.name == b.name);
-
-    Ok(dependencies)
-}
-
-fn format_size(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-    if bytes == 0 {
-        return "0 B".to_string();
-    }
-
-    let mut value = bytes as f64;
-    let mut unit = 0;
-    while value >= 1024.0 && unit < UNITS.len() - 1 {
-        value /= 1024.0;
-        unit += 1;
-    }
-
-    if unit == 0 {
-        format!("{} {}", bytes, UNITS[unit])
-    } else {
-        format!("{:.1} {}", value, UNITS[unit])
-    }
-}
-
-fn format_download_size(bytes: u64) -> String {
-    const KB: f64 = 1000.0;
-    const MB: f64 = KB * 1000.0;
-    const GB: f64 = MB * 1000.0;
-
-    if bytes < MB as u64 {
-        format!("{:.1} KB", bytes as f64 / KB)
-    } else if bytes < GB as u64 {
-        format!("{:.2} MB", bytes as f64 / MB)
-    } else {
-        format!("{:.2} GB", bytes as f64 / GB)
-    }
-}
-
 fn sanitize_contact_field(value: &str) -> String {
     let trimmed = value.trim();
     if let Some(start) = trimmed.find('<') {
@@ -9110,59 +8814,6 @@ fn package_matches_filter(pkg: &PackageInfo, filter_lower: &str) -> bool {
     pkg.name_lower.contains(needle)
         || pkg.version_lower.contains(needle)
         || pkg.description_lower.contains(needle)
-}
-
-fn run_xbps_query_search(query: &str) -> Result<Vec<PackageInfo>, String> {
-    let output = Command::new("xbps-query")
-        .args(["-Rs", query])
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(parse_query_output(&stdout))
-}
-
-fn run_xbps_list_installed() -> Result<Vec<PackageInfo>, String> {
-    let output = Command::new("xbps-query")
-        .arg("-l")
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(parse_installed_output(&stdout))
-}
-
-fn run_xbps_install(package: &str) -> Result<CommandResult, String> {
-    run_privileged_command("xbps-install", &["-y", package])
-}
-
-fn run_xbps_remove(package: &str) -> Result<CommandResult, String> {
-    run_xbps_remove_packages(&[package.to_string()])
-}
-
-fn run_xbps_remove_packages(packages: &[String]) -> Result<CommandResult, String> {
-    if packages.is_empty() {
-        return Ok(CommandResult {
-            code: Some(0),
-            stdout: String::new(),
-            stderr: String::new(),
-        });
-    }
-
-    let mut args = vec!["-y"];
-    let package_refs: Vec<&str> = packages.iter().map(|pkg| pkg.as_str()).collect();
-    args.extend(package_refs);
-    run_privileged_command("xbps-remove", &args)
 }
 
 fn query_installed_detail(
@@ -9208,454 +8859,6 @@ fn query_installed_detail(
     detail.license = metadata.license;
 
     Ok(detail)
-}
-
-fn query_pkgsize_bytes(package: &str) -> Result<Option<u64>, String> {
-    if let Some(bytes) = query_size_property(package, "installed_size")? {
-        return Ok(Some(bytes));
-    }
-    query_size_property(package, "pkgsize")
-}
-
-fn run_xbps_query_required_by(package: &str) -> Result<Vec<String>, String> {
-    let output = Command::new("xbps-query")
-        .args(["-X", package])
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut required = Vec::new();
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let (name, _) = split_package_identifier(trimmed);
-        if !name.is_empty() {
-            required.push(name);
-        }
-    }
-    required.sort();
-    required.dedup();
-    Ok(required)
-}
-
-fn query_size_property(package: &str, property: &str) -> Result<Option<u64>, String> {
-    let output = Command::new("xbps-query")
-        .args(["-p", property, package])
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        let value = trimmed
-            .strip_prefix(property)
-            .and_then(|s| s.strip_prefix(':'))
-            .map(|v| v.trim())
-            .unwrap_or(trimmed);
-        if let Some(bytes) = parse_bytes_from_field(value) {
-            return Ok(Some(bytes));
-        }
-    }
-
-    Ok(None)
-}
-
-fn parse_bytes_from_field(text: &str) -> Option<u64> {
-    let trimmed = text.trim().trim_end_matches(|c| c == ',' || c == '.');
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let cleaned = trimmed.replace(',', "");
-    let mut parts = cleaned.split_whitespace();
-    if let Some(first) = parts.next() {
-        if let Ok(value) = first.parse::<u64>() {
-            if let Some(unit) = parts.next() {
-                return Some((value as f64 * unit_multiplier(unit)).round() as u64);
-            }
-            return Some(value);
-        }
-        if let Ok(value) = first.parse::<f64>() {
-            if let Some(unit) = parts.next() {
-                return Some((value * unit_multiplier(unit)).round() as u64);
-            }
-        }
-    }
-
-    let mut number = String::new();
-    let mut unit = String::new();
-    for ch in cleaned.chars() {
-        if ch.is_ascii_digit() || ch == '.' {
-            number.push(ch);
-        } else if !ch.is_whitespace() {
-            unit.push(ch);
-        }
-    }
-
-    if number.is_empty() {
-        return None;
-    }
-
-    if unit.is_empty() {
-        return number.parse::<u64>().ok();
-    }
-
-    let value = number.parse::<f64>().ok()?;
-    Some((value * unit_multiplier(&unit)).round() as u64)
-}
-
-fn unit_multiplier(unit: &str) -> f64 {
-    let cleaned = unit
-        .trim()
-        .trim_matches(|c: char| !c.is_ascii_alphabetic())
-        .to_lowercase();
-    match cleaned.as_str() {
-        "b" | "byte" | "bytes" => 1.0,
-        "k" | "kb" | "kib" | "ki" => 1024.0,
-        "m" | "mb" | "mib" | "mi" => 1024.0 * 1024.0,
-        "g" | "gb" | "gib" | "gi" => 1024.0 * 1024.0 * 1024.0,
-        "t" | "tb" | "tib" | "ti" => 1024.0 * 1024.0 * 1024.0 * 1024.0,
-        other if other.ends_with("ib") => match &other[..other.len() - 2] {
-            "k" => 1024.0,
-            "m" => 1024.0 * 1024.0,
-            "g" => 1024.0 * 1024.0 * 1024.0,
-            "t" => 1024.0 * 1024.0 * 1024.0 * 1024.0,
-            _ => 1.0,
-        },
-        _ => 1.0,
-    }
-}
-
-#[derive(Default)]
-struct PackageMetadata {
-    long_desc: Option<String>,
-    homepage: Option<String>,
-    maintainer: Option<String>,
-    license: Option<String>,
-    repository: Option<String>,
-}
-
-fn query_package_metadata(package: &str) -> PackageMetadata {
-    const PROPERTIES: [&str; 5] = [
-        "long_desc",
-        "homepage",
-        "maintainer",
-        "license",
-        "repository",
-    ];
-    let mut metadata = PackageMetadata::default();
-
-    if let Some(values) = query_properties_bulk(package, &PROPERTIES) {
-        if let Some(long_desc) = values.get("long_desc").and_then(parse_long_description) {
-            metadata.long_desc = Some(long_desc);
-        }
-        metadata.homepage = values.get("homepage").and_then(clean_simple_property);
-        metadata.maintainer = values.get("maintainer").and_then(clean_simple_property);
-        metadata.license = values.get("license").and_then(clean_simple_property);
-        metadata.repository = values.get("repository").and_then(clean_simple_property);
-    }
-
-    metadata
-}
-
-fn parse_long_description(raw: &String) -> Option<String> {
-    let mut lines = Vec::new();
-    for line in raw.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        lines.push(trimmed.to_string());
-    }
-
-    if lines.is_empty() {
-        None
-    } else {
-        Some(lines.join("\n"))
-    }
-}
-
-fn clean_simple_property(raw: &String) -> Option<String> {
-    let trimmed = raw.trim().trim_matches(|c| c == '"' || c == '\'').trim();
-    if trimmed.is_empty() || trimmed == "-" {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-fn query_properties_bulk(package: &str, properties: &[&str]) -> Option<HashMap<String, String>> {
-    if properties.is_empty() {
-        return Some(HashMap::new());
-    }
-
-    let mut command = Command::new("xbps-query");
-    for prop in properties {
-        command.arg("-p");
-        command.arg(prop);
-    }
-    command.arg(package);
-
-    let output = command.output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let property_set: HashSet<&str> = properties.iter().copied().collect();
-    let mut result: HashMap<String, String> = HashMap::new();
-
-    let mut current_key: Option<String> = None;
-    let mut current_value = String::new();
-
-    for line in stdout.lines() {
-        let trimmed_end = line.trim_end();
-        if trimmed_end.is_empty() {
-            continue;
-        }
-
-        if let Some((candidate, remainder)) = trimmed_end.split_once(':') {
-            let key = candidate.trim();
-            if property_set.contains(key) {
-                if let Some(prev_key) = current_key.take() {
-                    let normalized = normalize_property_text(&current_value);
-                    result.entry(prev_key).or_insert(normalized);
-                }
-                current_key = Some(key.to_string());
-                current_value = remainder.trim().to_string();
-                continue;
-            }
-        }
-
-        if let Some(_) = current_key {
-            let value = trimmed_end.trim();
-            if value.is_empty() {
-                continue;
-            }
-            if !current_value.is_empty() {
-                current_value.push('\n');
-            }
-            current_value.push_str(value);
-            continue;
-        }
-
-        if properties.len() == 1 {
-            let key = properties[0].to_string();
-            let normalized = normalize_property_text(trimmed_end);
-            result.entry(key).or_insert(normalized);
-        }
-    }
-
-    if let Some(prev_key) = current_key {
-        let normalized = normalize_property_text(&current_value);
-        result.entry(prev_key).or_insert(normalized);
-    }
-
-    Some(result)
-}
-
-fn normalize_property_text(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        String::new()
-    } else if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
-    {
-        trimmed[1..trimmed.len() - 1].trim().to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-fn run_privileged_command(program: &str, args: &[&str]) -> Result<CommandResult, String> {
-    let output = Command::new("pkexec")
-        .arg(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("Failed to launch pkexec: {}", err))?;
-
-    Ok(CommandResult {
-        code: output.status.code(),
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-    })
-}
-
-fn run_xbps_check_updates() -> Result<Vec<PackageInfo>, String> {
-    let output = Command::new("xbps-install")
-        .args(["-Sun"])
-        .env("NO_COLOR", "1")
-        .env("XBPS_INSTALL_VERBOSE", "2")
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-install: {}", err))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let cleaned = strip_ansi_codes(&stdout);
-    Ok(parse_updates_output(&cleaned))
-}
-
-fn run_xbps_update_all() -> Result<CommandResult, String> {
-    run_privileged_command("xbps-install", &["-y", "-Su"])
-}
-
-fn run_xbps_update_package(package: &str) -> Result<CommandResult, String> {
-    run_privileged_command("xbps-install", &["-y", "-u", package])
-}
-
-fn run_xbps_update_packages(packages: &[String]) -> Result<CommandResult, String> {
-    if packages.is_empty() {
-        return Ok(CommandResult {
-            code: Some(0),
-            stdout: String::new(),
-            stderr: String::new(),
-        });
-    }
-
-    let mut args = vec!["-y", "-u"];
-    let package_refs: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
-    args.extend(package_refs);
-    run_privileged_command("xbps-install", &args)
-}
-
-fn query_repo_package_info(name: &str) -> Result<PackageInfo, String> {
-    let output = Command::new("xbps-query")
-        .args(["-R", name])
-        .output()
-        .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(stderr.trim().to_string());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut pkgver = String::new();
-    let mut description = String::new();
-    let mut pkgsize_bytes: Option<u64> = None;
-    let mut download_literal: Option<String> = None;
-    let mut changelog: Option<String> = None;
-    let mut capture_changelog = false;
-
-    for line in stdout.lines() {
-        if let Some(value) = line.strip_prefix("pkgver:") {
-            pkgver = value.trim().to_string();
-        } else if let Some(value) = line.strip_prefix("short_desc:") {
-            description = value.trim().to_string();
-        } else if let Some(value) = line.strip_prefix("pkgsize:") {
-            let trimmed = value.trim();
-            if pkgsize_bytes.is_none() {
-                pkgsize_bytes = parse_bytes_from_field(trimmed).or_else(|| parse_bytes(trimmed));
-            }
-            if download_literal.is_none() && !trimmed.is_empty() {
-                download_literal = Some(trimmed.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("filename-size:") {
-            let trimmed = value.trim();
-            if pkgsize_bytes.is_none() {
-                pkgsize_bytes = parse_bytes_from_field(trimmed).or_else(|| parse_bytes(trimmed));
-            }
-            if download_literal.is_none() && !trimmed.is_empty() {
-                download_literal = Some(trimmed.to_string());
-            }
-        } else if let Some(value) = line.strip_prefix("changelog:") {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                capture_changelog = true;
-            } else {
-                changelog = Some(trimmed.to_string());
-            }
-        } else if capture_changelog {
-            if line.starts_with(' ') || line.starts_with('\t') {
-                let trimmed = line.trim();
-                if !trimmed.is_empty() && changelog.is_none() {
-                    changelog = Some(trimmed.to_string());
-                }
-            }
-            capture_changelog = false;
-        }
-    }
-
-    if description.is_empty() {
-        description = "Update available".to_string();
-    }
-
-    let version = if !pkgver.is_empty() {
-        let (_, ver) = split_package_identifier(&pkgver);
-        ver
-    } else {
-        String::new()
-    };
-
-    let download_bytes = pkgsize_bytes;
-    let download_size = download_bytes.map(format_size).or(download_literal);
-
-    let name_owned = name.to_string();
-    let version_lower = lowercase_cache(&version);
-    let description_lower = lowercase_cache(&description);
-
-    Ok(PackageInfo {
-        name_lower: lowercase_cache(&name_owned),
-        version_lower,
-        description_lower,
-        name: name_owned,
-        version,
-        description,
-        installed: true,
-        previous_version: None,
-        download_size,
-        changelog,
-        download_bytes,
-        repository: None,
-        build_date: None,
-        first_seen: None,
-    })
-}
-
-fn query_installed_package_version(name: &str) -> Option<String> {
-    let output = Command::new("xbps-query")
-        .args(["-p", "pkgver", name])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let identifier = trimmed
-            .strip_prefix("pkgver:")
-            .map(|value| value.trim())
-            .unwrap_or(trimmed);
-        let (_name, version) = split_package_identifier(identifier);
-        if !version.is_empty() {
-            return Some(version);
-        }
-    }
-
-    None
 }
 
 fn query_discover_detail(package: &str) -> Result<DiscoverDetail, String> {
@@ -9705,348 +8908,4 @@ fn query_discover_detail(package: &str) -> Result<DiscoverDetail, String> {
 
 fn detail_download_bytes(package: &str) -> Option<u64> {
     query_pkgsize_bytes(package).ok().unwrap_or(None)
-}
-
-fn parse_updates_output(text: &str) -> Vec<PackageInfo> {
-    let mut updates = Vec::new();
-
-    for raw_line in text.lines() {
-        let mut line = raw_line.trim().trim_start_matches('\r');
-        if line.is_empty() {
-            continue;
-        }
-
-        if let Some(rest) = line.strip_prefix("xbps-install:") {
-            line = rest.trim();
-        }
-
-        line = line
-            .trim_start_matches(|c: char| c == '*' || c == '-' || c == '>')
-            .trim();
-
-        loop {
-            if line.starts_with('[') {
-                if let Some(pos) = line.find(']') {
-                    line = line[pos + 1..].trim();
-                    continue;
-                }
-            }
-            break;
-        }
-
-        if line.is_empty() {
-            continue;
-        }
-
-        // Pattern: name-version -> newversion
-        if let Some(idx) = line.find("->") {
-            let left = line[..idx].trim();
-            let right = line[idx + 2..].trim();
-            if left.is_empty() || right.is_empty() {
-                continue;
-            }
-
-            let (name, prev_version) = split_package_identifier(left);
-            if name.is_empty() {
-                continue;
-            }
-
-            let new_version_token = right
-                .split_whitespace()
-                .find(|token| token.chars().any(|c| c.is_ascii_digit()))
-                .unwrap_or("");
-            let version = if new_version_token.contains('-') {
-                let (_, ver) = split_package_identifier(new_version_token);
-                ver
-            } else {
-                new_version_token.to_string()
-            };
-
-            add_update_entry(&mut updates, name, version, Some(prev_version));
-            continue;
-        }
-
-        // Pattern: name-version update available (installed: ...)
-        if line.contains("update available") {
-            let (identifier, rest) = match line.split_once(" update available") {
-                Some((id, remainder)) => (id.trim(), remainder.trim()),
-                None => continue,
-            };
-            if identifier.is_empty() {
-                continue;
-            }
-
-            let (name, version) = split_package_identifier(identifier);
-            let previous_version = rest
-                .split("(installed:")
-                .nth(1)
-                .and_then(|segment| segment.split(')').next())
-                .map(|text| text.trim().to_string());
-
-            add_update_entry(&mut updates, name, version, previous_version);
-            continue;
-        }
-
-        // Generic "update" text, e.g. "pkg-1.0_1 update (pkg-1.0_2)"
-        if let Some(idx) = line.find(" update") {
-            let left = line[..idx].trim();
-            let right = line[idx + " update".len()..].trim();
-            if left.is_empty() {
-                continue;
-            }
-
-            let (name, prev_version) = split_package_identifier(left);
-            if name.is_empty() {
-                continue;
-            }
-
-            let new_version_token = right
-                .split(|c| c == ')' || c == ' ' || c == ',' || c == ':')
-                .find(|part| part.contains('-') || part.chars().any(|c| c.is_ascii_digit()))
-                .unwrap_or("")
-                .trim_start_matches('(')
-                .trim();
-
-            let version = if new_version_token.contains('-') {
-                let (_, ver) = split_package_identifier(new_version_token);
-                ver
-            } else {
-                new_version_token.to_string()
-            };
-
-            add_update_entry(&mut updates, name, version, Some(prev_version));
-        }
-    }
-
-    updates.sort_by(|a, b| a.name.cmp(&b.name));
-    updates
-}
-
-fn add_update_entry(
-    updates: &mut Vec<PackageInfo>,
-    name: String,
-    version: String,
-    previous_version: Option<String>,
-) {
-    if name.is_empty() {
-        return;
-    }
-
-    let mut info = query_repo_package_info(&name).unwrap_or_else(|_| {
-        let description = "Update available".to_string();
-        PackageInfo {
-            name_lower: lowercase_cache(&name),
-            version_lower: lowercase_cache(&version),
-            description_lower: lowercase_cache(&description),
-            name: name.clone(),
-            version: version.clone(),
-            description,
-            installed: true,
-            previous_version: previous_version.clone(),
-            download_size: None,
-            changelog: None,
-            download_bytes: None,
-            repository: None,
-            build_date: None,
-            first_seen: None,
-        }
-    });
-
-    if looks_like_version(&version) {
-        info.set_version(version);
-    }
-    info.installed = true;
-    if let Some(installed) = query_installed_package_version(&name) {
-        info.previous_version = Some(installed);
-    } else if let Some(prev) = previous_version {
-        if !prev.is_empty() {
-            info.previous_version = Some(prev);
-        }
-    }
-    if info.download_size.is_none() {
-        if let Some(bytes) = info.download_bytes {
-            info.download_size = Some(format_size(bytes));
-        }
-    }
-
-    updates.push(info);
-}
-
-fn looks_like_version(text: &str) -> bool {
-    if text.is_empty() {
-        return false;
-    }
-
-    let mut chars = text.chars();
-    if let Some(first) = chars.next() {
-        if first.is_ascii_digit() {
-            return true;
-        }
-        if matches!(first, 'v' | 'r') {
-            return chars.next().map(|c| c.is_ascii_digit()).unwrap_or(false);
-        }
-    }
-
-    false
-}
-
-fn strip_ansi_codes(text: &str) -> String {
-    let mut result = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\r' {
-            continue;
-        }
-        if ch == '\u{1b}' {
-            if matches!(chars.peek(), Some('[')) {
-                chars.next();
-                while let Some(next) = chars.next() {
-                    if (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') {
-                        break;
-                    }
-                }
-            }
-        } else {
-            result.push(ch);
-        }
-    }
-    result
-}
-
-fn parse_bytes(text: &str) -> Option<u64> {
-    let cleaned = text
-        .split_whitespace()
-        .next()
-        .unwrap_or(text)
-        .trim()
-        .trim_end_matches(|c: char| c == ',' || c == '.');
-    cleaned.parse().ok()
-}
-
-fn parse_query_output(output: &str) -> Vec<PackageInfo> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-
-            let mut tokens = trimmed.split_whitespace();
-            let first = tokens.next()?;
-
-            let (marker, identifier_token) = if first.starts_with('[') && first.ends_with(']') {
-                (Some(first), tokens.next()?)
-            } else {
-                (None, first)
-            };
-
-            let mut installed = false;
-            if let Some(marker) = marker {
-                installed = marker.contains('x') || marker.contains('X');
-            }
-
-            let identifier = identifier_token.trim();
-            let rest = tokens.collect::<Vec<_>>().join(" ");
-            let (name, version) = split_package_identifier(identifier);
-
-            let description = rest;
-            Some(PackageInfo {
-                name_lower: lowercase_cache(&name),
-                version_lower: lowercase_cache(&version),
-                description_lower: lowercase_cache(&description),
-                name,
-                version,
-                description,
-                installed,
-                previous_version: None,
-                download_size: None,
-                changelog: None,
-                download_bytes: None,
-                repository: None,
-                build_date: None,
-                first_seen: None,
-            })
-        })
-        .collect()
-}
-
-fn parse_installed_output(output: &str) -> Vec<PackageInfo> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-
-            let mut split = trimmed.split_whitespace();
-            let _status = split.next()?;
-            let identifier = split.next()?;
-            let (name, version) = split_package_identifier(identifier);
-
-            let description_index = trimmed.find(identifier).map(|idx| idx + identifier.len());
-            let description = description_index
-                .and_then(|pos| trimmed.get(pos..))
-                .map(|rest| rest.trim().to_string())
-                .unwrap_or_default();
-
-            Some(PackageInfo {
-                name_lower: lowercase_cache(&name),
-                version_lower: lowercase_cache(&version),
-                description_lower: lowercase_cache(&description),
-                name,
-                version,
-                description,
-                installed: true,
-                previous_version: None,
-                download_size: None,
-                changelog: None,
-                download_bytes: None,
-                repository: None,
-                build_date: None,
-                first_seen: None,
-            })
-        })
-        .collect()
-}
-
-fn split_package_identifier(identifier: &str) -> (String, String) {
-    if let Some(pos) = identifier.rfind('-') {
-        let (name, version_part) = identifier.split_at(pos);
-        (
-            name.to_string(),
-            version_part.trim_start_matches('-').to_string(),
-        )
-    } else {
-        (identifier.to_string(), String::new())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fetch_remote_spotlight_metadata_returns_packages() {
-        let packages = fetch_remote_spotlight_metadata().expect("fetch spotlight metadata");
-        assert!(
-            !packages.is_empty(),
-            "expected spotlight metadata to include packages"
-        );
-    }
-
-    #[test]
-    fn refresh_spotlight_cache_produces_spotlight_lists() {
-        let cache = SpotlightCache::default();
-        let outcome = refresh_spotlight_cache(cache).expect("refresh spotlight cache");
-        assert!(
-            !outcome.recent.is_empty(),
-            "expected recent spotlight entries"
-        );
-        assert!(
-            !outcome.categories.is_empty(),
-            "expected spotlight categories"
-        );
-    }
 }

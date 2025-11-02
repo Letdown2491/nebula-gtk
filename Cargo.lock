@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "nebula-gtk"
-version = "0.7.2"
+version = "0.9.0"
 dependencies = [
  "chrono",
  "glib-build-tools",

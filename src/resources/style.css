@@ -1,0 +1,538 @@
+@define-color nebula_bg #0c1010;
+@define-color nebula_bg_alt #161d1d;
+@define-color nebula_surface #1a2222;
+@define-color nebula_surface_highlight rgba(13, 208, 169, 0.16);
+@define-color nebula_border rgba(84, 241, 214, 0.28);
+@define-color nebula_text #e8f7f4;
+@define-color nebula_muted rgba(232, 247, 244, 0.65);
+@define-color nebula_accent #0dd0a9;
+@define-color nebula_accent_bright #54f1d6;
+@define-color nebula_warning #d4a75c;
+@define-color nebula_shadow rgba(4, 8, 9, 0.6);
+
+@define-color nebula_light_bg #f2fbf8;
+@define-color nebula_light_bg_alt #e8f4f1;
+@define-color nebula_light_surface #ffffff;
+@define-color nebula_light_border rgba(6, 86, 72, 0.2);
+@define-color nebula_light_text #05322a;
+@define-color nebula_light_muted rgba(5, 50, 41, 0.65);
+@define-color nebula_light_shadow rgba(10, 34, 30, 0.14);
+
+@define-color accent_color @nebula_accent;
+@define-color accent_bg_color @nebula_accent;
+@define-color accent_fg_color #07120e;
+@define-color accent_hover_bg_color mix(@nebula_accent, @nebula_bg, 0.8);
+@define-color accent_active_bg_color mix(@nebula_accent, @nebula_bg, 0.6);
+@define-color window_bg_color @nebula_bg;
+@define-color window_fg_color @nebula_text;
+@define-color headerbar_bg_color rgba(12, 16, 16, 0.92);
+@define-color headerbar_fg_color @nebula_text;
+@define-color headerbar_border_color @nebula_border;
+@define-color view_bg_color @nebula_bg_alt;
+@define-color view_fg_color @nebula_text;
+@define-color card_bg_color @nebula_surface;
+@define-color card_fg_color @nebula_text;
+@define-color card_border_color @nebula_border;
+@define-color warning_bg_color alpha(@nebula_warning, 0.18);
+@define-color warning_fg_color @nebula_warning;
+
+window.nebula-window {
+  background-color: @nebula_bg;
+  color: @nebula_text;
+}
+
+.nebula-root {
+  padding: 0;
+  background-color: transparent;
+}
+
+headerbar.nebula-headerbar {
+  background-image: none;
+  background-color: @headerbar_bg_color;
+  border-bottom: 1px solid alpha(@nebula_border, 0.5);
+  box-shadow: none;
+  color: @headerbar_fg_color;
+}
+
+headerbar.nebula-headerbar button {
+  color: inherit;
+}
+
+headerbar.nebula-headerbar button.nebula-header-button {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  padding: 4px;
+  color: inherit;
+  transition: background-color 120ms ease-in-out, box-shadow 120ms ease-in-out;
+}
+
+headerbar.nebula-headerbar button.nebula-header-button:hover {
+  background-color: alpha(@nebula_accent, 0.16);
+  box-shadow: 0 0 0 1px alpha(@nebula_accent_bright, 0.28);
+}
+
+headerbar.nebula-headerbar button.nebula-header-button:checked,
+headerbar.nebula-headerbar button.nebula-header-button:active {
+  background-color: alpha(@nebula_accent, 0.22);
+  box-shadow: inset 0 0 0 1px alpha(@nebula_accent_bright, 0.45);
+}
+
+headerbar.nebula-headerbar label.nebula-header-title {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: @nebula_text;
+}
+
+.nebula-content {
+  padding: 12px 16px 16px;
+  background-color: transparent;
+}
+
+.nebula-switcher {
+  background-color: alpha(@nebula_surface, 0.65);
+  padding: 6px;
+  border-radius: 999px;
+  border: 1px solid @nebula_border;
+  box-shadow: 0 20px 40px -35px @nebula_shadow;
+}
+
+.nebula-switcher > togglebutton,
+.nebula-switcher > button {
+  border-radius: 999px;
+  padding: 8px 18px;
+  border: 1px solid transparent;
+  color: @nebula_muted;
+  font-weight: 500;
+}
+
+.nebula-switcher > togglebutton:hover,
+.nebula-switcher > button:hover {
+  color: @nebula_text;
+}
+
+.nebula-switcher > togglebutton:checked,
+.nebula-switcher > button:checked {
+  background-image: linear-gradient(
+      135deg,
+      alpha(@nebula_accent_bright, 0.85),
+      alpha(@nebula_accent, 0.95)
+  );
+  color: #05110d;
+  box-shadow: 0 8px 22px -14px alpha(@nebula_accent_bright, 0.8);
+}
+
+.nebula-switcher > togglebutton:checked > label,
+.nebula-switcher > button:checked > label {
+  color: inherit;
+}
+
+entry,
+searchentry {
+  background-color: @nebula_surface;
+  border: 1px solid alpha(@nebula_border, 0.8);
+  border-radius: 14px;
+  padding: 8px 14px;
+  color: @nebula_text;
+}
+
+entry:hover,
+searchentry:hover {
+  border-color: @nebula_border;
+}
+
+entry:focus,
+searchentry:focus {
+  border-color: @nebula_accent_bright;
+  box-shadow: 0 0 0 3px alpha(@nebula_accent_bright, 0.22);
+}
+
+selection,
+text selection {
+  background-color: alpha(@nebula_accent_bright, 0.35);
+  color: #04110d;
+}
+
+button {
+  transition: background-color 120ms ease-in-out, border-color 120ms ease-in-out,
+    box-shadow 120ms ease-in-out;
+}
+
+button.flat {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+
+button.suggested-action {
+  border-radius: 14px;
+  padding: 10px 20px;
+  border: 1px solid transparent;
+  background-image: linear-gradient(
+      135deg,
+      @nebula_accent,
+      @nebula_accent_bright
+  );
+  color: #04120d;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 14px 32px -24px alpha(@nebula_accent_bright, 0.9);
+}
+
+button.suggested-action:hover {
+  box-shadow: 0 16px 34px -18px alpha(@nebula_accent_bright, 0.85);
+}
+
+button.suggested-action:active,
+button.suggested-action:checked {
+  background-image: linear-gradient(
+      135deg,
+      mix(@nebula_accent, @nebula_bg, 0.6),
+      @nebula_accent
+  );
+  box-shadow: inset 0 0 0 1px alpha(@nebula_accent_bright, 0.55);
+}
+
+button.destructive-action {
+  border-radius: 14px;
+  padding: 10px 20px;
+  background-image: linear-gradient(
+      135deg,
+      #f37286,
+      #f05b6e
+  );
+  color: #ffffff;
+  border: 1px solid transparent;
+  box-shadow: 0 14px 32px -26px rgba(243, 114, 134, 0.9);
+}
+
+button.destructive-action:hover {
+  box-shadow: 0 16px 36px -20px rgba(243, 114, 134, 0.75);
+}
+
+button.pill {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 8px 14px;
+  color: @nebula_muted;
+  background-color: transparent;
+  font-weight: 500;
+}
+
+button.pill:hover {
+  color: @nebula_text;
+}
+
+button.pill:checked {
+  background-color: alpha(@nebula_accent, 0.2);
+  border-color: alpha(@nebula_accent_bright, 0.4);
+  color: @nebula_accent_bright;
+  box-shadow: 0 10px 28px -22px alpha(@nebula_accent_bright, 0.65);
+}
+
+.boxed-list {
+  background-color: transparent;
+  border-spacing: 8px;
+}
+
+.boxed-list > row {
+  background-color: @nebula_surface;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  margin: 6px 0;
+  padding: 14px 18px;
+  box-shadow: 0 12px 26px -26px @nebula_shadow;
+}
+
+.boxed-list > row:hover {
+  border-color: @nebula_border;
+  background-color: alpha(@nebula_accent, 0.14);
+}
+
+.boxed-list > row:selected,
+.boxed-list > row:checked {
+  border-color: alpha(@nebula_accent_bright, 0.5);
+  background-color: alpha(@nebula_accent, 0.22);
+  box-shadow: 0 18px 38px -28px alpha(@nebula_accent_bright, 0.7);
+}
+
+.boxed-list separator {
+  background-color: transparent;
+}
+
+.nebula-card {
+  background-color: @nebula_surface;
+  border-radius: 18px;
+  border: 1px solid alpha(@nebula_border, 0.7);
+  box-shadow: 0 22px 44px -36px @nebula_shadow;
+  padding: 18px;
+  color: @nebula_text;
+}
+
+.nebula-card.compact {
+  border-radius: 14px;
+  box-shadow: 0 18px 36px -32px @nebula_shadow;
+  padding: 12px;
+}
+
+.nebula-card.transparent {
+  background-color: alpha(@nebula_surface, 0.75);
+}
+
+popover {
+  background-color: @nebula_surface;
+  border-radius: 16px;
+  border: 1px solid @nebula_border;
+  box-shadow: 0 30px 60px -24px @nebula_shadow;
+  color: @nebula_text;
+}
+
+popover .menuitem {
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+dropdown.nebula-compact-dropdown {
+  padding: 0;
+}
+
+dropdown.nebula-compact-dropdown > button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+popover .menuitem:hover {
+  background-color: alpha(@nebula_accent, 0.16);
+}
+
+label {
+  color: @nebula_text;
+}
+
+label.dim-label {
+  color: @nebula_muted;
+}
+
+label.accent {
+  color: @nebula_accent_bright;
+  font-weight: 600;
+}
+
+.tag.accent {
+  background-image: linear-gradient(
+      135deg,
+      alpha(@nebula_accent_bright, 0.85),
+      alpha(@nebula_accent, 0.95)
+  );
+  color: #04110d;
+  border: 1px solid transparent;
+}
+
+label.nebula-badge {
+  border-radius: 999px;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+label.nebula-badge > * {
+  margin: 0;
+}
+
+spinner {
+  color: @nebula_accent_bright;
+}
+
+linkbutton {
+  color: @nebula_accent_bright;
+}
+
+scrollbar {
+  border: none;
+}
+
+scrollbar slider {
+  background-color: alpha(@nebula_accent, 0.35);
+  border-radius: 12px;
+}
+
+.theme-circle {
+  border-radius: 20px;
+  padding: 0;
+  border: 2px solid transparent;
+  background-color: alpha(@nebula_surface, 0.85);
+}
+
+.theme-circle button {
+  padding: 0;
+}
+
+.theme-circle:hover {
+  border-color: alpha(@nebula_accent, 0.35);
+}
+
+.theme-circle.theme-active {
+  border-color: @nebula_accent_bright;
+  box-shadow: 0 0 12px -4px alpha(@nebula_accent_bright, 0.9);
+}
+
+/* Light theme overrides */
+window.nebula-window.nebula-theme-light {
+  background-color: @nebula_light_bg;
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light headerbar.nebula-headerbar {
+  background-color: alpha(@nebula_light_surface, 0.94);
+  border-bottom: 1px solid alpha(@nebula_light_border, 0.85);
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light headerbar.nebula-headerbar label.nebula-header-title {
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light .nebula-switcher {
+  background-color: alpha(@nebula_light_surface, 0.95);
+  border: 1px solid alpha(@nebula_light_border, 0.9);
+  box-shadow: 0 20px 36px -34px @nebula_light_shadow;
+}
+
+window.nebula-window.nebula-theme-light .nebula-switcher > togglebutton,
+window.nebula-window.nebula-theme-light .nebula-switcher > button {
+  color: @nebula_light_muted;
+}
+
+window.nebula-window.nebula-theme-light .nebula-switcher > togglebutton:hover,
+window.nebula-window.nebula-theme-light .nebula-switcher > button:hover {
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light entry,
+window.nebula-window.nebula-theme-light searchentry {
+  background-color: @nebula_light_surface;
+  border: 1px solid alpha(@nebula_light_border, 0.9);
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light entry:hover,
+window.nebula-window.nebula-theme-light searchentry:hover {
+  border-color: @nebula_light_border;
+}
+
+window.nebula-window.nebula-theme-light entry:focus,
+window.nebula-window.nebula-theme-light searchentry:focus {
+  border-color: @nebula_accent_bright;
+  box-shadow: 0 0 0 3px alpha(@nebula_accent_bright, 0.18);
+}
+
+window.nebula-window.nebula-theme-light selection,
+window.nebula-window.nebula-theme-light text selection {
+  background-color: alpha(@nebula_accent_bright, 0.22);
+  color: #04120d;
+}
+
+window.nebula-window.nebula-theme-light button.suggested-action:active,
+window.nebula-window.nebula-theme-light button.suggested-action:checked {
+  background-image: linear-gradient(
+      135deg,
+      mix(@nebula_accent, @nebula_light_bg, 0.6),
+      @nebula_accent
+  );
+}
+
+window.nebula-window.nebula-theme-light button.pill {
+  color: @nebula_light_muted;
+}
+
+window.nebula-window.nebula-theme-light button.pill:hover {
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light button.pill:checked {
+  background-color: alpha(@nebula_accent, 0.15);
+  border-color: alpha(@nebula_accent_bright, 0.4);
+  color: @nebula_accent;
+  box-shadow: 0 10px 24px -20px alpha(@nebula_accent_bright, 0.55);
+}
+
+window.nebula-window.nebula-theme-light .boxed-list > row {
+  background-color: @nebula_light_surface;
+  border: 1px solid alpha(@nebula_light_border, 0.4);
+  box-shadow: 0 12px 26px -24px @nebula_light_shadow;
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light .boxed-list > row:hover {
+  border-color: alpha(@nebula_light_border, 0.8);
+  background-color: alpha(@nebula_accent, 0.12);
+}
+
+window.nebula-window.nebula-theme-light .boxed-list > row:selected,
+window.nebula-window.nebula-theme-light .boxed-list > row:checked {
+  border-color: alpha(@nebula_accent_bright, 0.4);
+  background-color: alpha(@nebula_accent, 0.18);
+  box-shadow: 0 18px 36px -28px alpha(@nebula_accent_bright, 0.5);
+}
+
+window.nebula-window.nebula-theme-light .nebula-card {
+  background-color: @nebula_light_surface;
+  border: 1px solid alpha(@nebula_light_border, 0.6);
+  box-shadow: 0 22px 40px -34px @nebula_light_shadow;
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light .nebula-card.compact {
+  box-shadow: 0 18px 32px -30px @nebula_light_shadow;
+}
+
+window.nebula-window.nebula-theme-light .nebula-card.transparent {
+  background-color: alpha(@nebula_light_surface, 0.85);
+}
+
+window.nebula-window.nebula-theme-light popover {
+  background-color: @nebula_light_surface;
+  border: 1px solid alpha(@nebula_light_border, 0.85);
+  box-shadow: 0 30px 50px -24px @nebula_light_shadow;
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light popover .menuitem:hover {
+  background-color: alpha(@nebula_accent, 0.12);
+}
+
+window.nebula-window.nebula-theme-light label {
+  color: @nebula_light_text;
+}
+
+window.nebula-window.nebula-theme-light label.dim-label {
+  color: @nebula_light_muted;
+}
+
+window.nebula-window.nebula-theme-light spinner,
+window.nebula-window.nebula-theme-light linkbutton {
+  color: @nebula_accent_bright;
+}
+
+window.nebula-window.nebula-theme-light scrollbar slider {
+  background-color: alpha(@nebula_accent, 0.25);
+}
+
+window.nebula-window.nebula-theme-light .theme-circle {
+  background-color: alpha(@nebula_light_surface, 0.95);
+}
+
+window.nebula-window.nebula-theme-light .theme-circle:hover {
+  border-color: alpha(@nebula_accent, 0.3);
+}
+
+window.nebula-window.nebula-theme-light .theme-circle.theme-active {
+  border-color: @nebula_accent_bright;
+  box-shadow: 0 0 10px -4px alpha(@nebula_accent_bright, 0.75);
+}

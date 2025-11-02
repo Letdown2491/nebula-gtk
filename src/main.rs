@@ -67,18 +67,26 @@ fn build_ui(app: &adw::Application) {
         .default_width(initial_width)
         .default_height(initial_height)
         .build();
+    window.add_css_class("nebula-window");
 
     let toast_overlay = adw::ToastOverlay::new();
     window.set_content(Some(&toast_overlay));
 
     let root_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    root_box.add_css_class("nebula-root");
     toast_overlay.set_child(Some(&root_box));
 
     let view_stack = adw::ViewStack::new();
 
     let header_bar = adw::HeaderBar::new();
+    header_bar.add_css_class("nebula-headerbar");
     header_bar.set_hexpand(true);
-    header_bar.set_title_widget(Some(&gtk::Label::new(Some("Nebula"))));
+    let header_title = gtk::Label::builder()
+        .label("Nebula")
+        .halign(gtk::Align::Center)
+        .build();
+    header_title.add_css_class("nebula-header-title");
+    header_bar.set_title_widget(Some(&header_title));
     header_bar.set_show_end_title_buttons(false);
     header_bar.set_show_start_title_buttons(false);
     root_box.append(&header_bar);
@@ -96,6 +104,10 @@ fn build_ui(app: &adw::Application) {
     };
     stored_theme.apply(&style_manager);
     let current_theme = stored_theme.key().to_string();
+    apply_theme_css_class(&window, style_manager.is_dark());
+    style_manager.connect_dark_notify(glib::clone!(@weak window => move |manager| {
+        apply_theme_css_class(&window, manager.is_dark());
+    }));
 
     let theme_action = gio::SimpleAction::new_stateful(
         "theme",
@@ -192,11 +204,7 @@ fn build_ui(app: &adw::Application) {
 
     let display = gdk::Display::default().expect("No display");
     let css_provider = gtk::CssProvider::new();
-    css_provider.load_from_data(
-        ".theme-circle { border-radius: 20px; padding: 0; border: 2px solid transparent; }
-.theme-circle.theme-active { border: 2px solid #3584e4; }
-.theme-circle button { padding: 0; }",
-    );
+    css_provider.load_from_resource("/tech/geektoshi/Nebula/style.css");
     gtk::style_context_add_provider_for_display(
         &display,
         &css_provider,
@@ -208,7 +216,7 @@ fn build_ui(app: &adw::Application) {
         .has_frame(false)
         .build();
     menu_button.add_css_class("flat");
-    menu_button.add_css_class("circular");
+    menu_button.add_css_class("nebula-header-button");
 
     let popover = gtk::Popover::builder()
         .has_arrow(true)
@@ -376,6 +384,7 @@ fn build_ui(app: &adw::Application) {
         .build();
     content.set_vexpand(true);
     content.set_hexpand(true);
+    content.add_css_class("nebula-content");
     root_box.append(&content);
 
     let (discover_page, discover_widgets) = build_discover_page();
@@ -393,9 +402,9 @@ fn build_ui(app: &adw::Application) {
 
     let switcher_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
-        .spacing(0)
+        .spacing(6)
         .build();
-    switcher_box.add_css_class("linked");
+    switcher_box.add_css_class("nebula-switcher");
     switcher_box.set_halign(gtk::Align::Center);
     switcher_box.set_margin_bottom(6);
 
@@ -420,6 +429,11 @@ fn build_ui(app: &adw::Application) {
     let updates_badge = gtk::Label::new(Some("0"));
     updates_badge.add_css_class("tag");
     updates_badge.add_css_class("accent");
+    updates_badge.add_css_class("nebula-badge");
+    updates_badge.set_xalign(0.5);
+    updates_badge.set_yalign(0.5);
+    updates_badge.set_halign(gtk::Align::Center);
+    updates_badge.set_valign(gtk::Align::Center);
     updates_badge.set_margin_start(4);
     updates_badge.set_visible(false);
     updates_content.append(&updates_label);
@@ -509,6 +523,16 @@ fn build_ui(app: &adw::Application) {
     });
 
     window.present();
+}
+
+fn apply_theme_css_class(window: &adw::ApplicationWindow, is_dark: bool) {
+    if is_dark {
+        window.remove_css_class("nebula-theme-light");
+        window.add_css_class("nebula-theme-dark");
+    } else {
+        window.remove_css_class("nebula-theme-dark");
+        window.add_css_class("nebula-theme-light");
+    }
 }
 
 fn build_theme_icon(mode: ThemeGlyph) -> gtk::DrawingArea {
@@ -618,7 +642,6 @@ struct AppState {
     installed_filter: String,
     installed_filtered: Vec<usize>,
     installed_selected: HashSet<String>,
-    installed_sort: InstalledSort,
     installed_filter_mode: InstalledFilter,
     installed_last_refresh: Option<glib::DateTime>,
     selected_installed: Option<usize>,
@@ -699,6 +722,7 @@ struct DiscoverWidgets {
     detail_stack: gtk::Stack,
     detail_name: gtk::Label,
     detail_back_button: gtk::Button,
+    detail_close_button: gtk::Button,
     detail_version_value: gtk::Label,
     detail_repository_row: gtk::Box,
     detail_repository_value: gtk::Label,
@@ -715,6 +739,7 @@ struct DiscoverWidgets {
     detail_dependencies_stack: gtk::Stack,
     detail_dependencies_list: gtk::ListBox,
     detail_dependencies_placeholder: gtk::Label,
+    detail_frame: gtk::Frame,
     spotlight_spinner: gtk::Spinner,
     spotlight_status: gtk::Label,
     spotlight_recent_stack: gtk::Stack,
@@ -762,14 +787,15 @@ struct InstalledWidgets {
     search_entry: gtk::SearchEntry,
     status_label: gtk::Label,
     spinner: gtk::Spinner,
-    sort_dropdown: gtk::DropDown,
     filter_dropdown: gtk::DropDown,
     remove_selected_button: gtk::Button,
     list: gtk::ListBox,
     detail_stack: gtk::Stack,
+    detail_frame: gtk::Frame,
     detail_remove_button: gtk::Button,
     detail_update_button: gtk::Button,
     detail_back_button: gtk::Button,
+    detail_close_button: gtk::Button,
     detail_name: gtk::Label,
     detail_version_value: gtk::Label,
     detail_description: gtk::Label,
@@ -1194,14 +1220,14 @@ fn spotlight_cache_dir() -> Option<PathBuf> {
     if let Ok(cache_home) = env::var("XDG_CACHE_HOME") {
         let trimmed = cache_home.trim();
         if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join("nebula-store"));
+            return Some(PathBuf::from(trimmed).join("nebula-gtk"));
         }
     }
 
     if let Ok(home) = env::var("HOME") {
         let trimmed = home.trim();
         if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join(".cache").join("nebula-store"));
+            return Some(PathBuf::from(trimmed).join(".cache").join("nebula-gtk"));
         }
     }
 
@@ -1223,14 +1249,14 @@ fn app_config_dir() -> Option<PathBuf> {
     if let Ok(config_home) = env::var("XDG_CONFIG_HOME") {
         let trimmed = config_home.trim();
         if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join("nebula-store"));
+            return Some(PathBuf::from(trimmed).join("nebula-gtk"));
         }
     }
 
     if let Ok(home) = env::var("HOME") {
         let trimmed = home.trim();
         if !trimmed.is_empty() {
-            return Some(PathBuf::from(trimmed).join(".config").join("nebula-store"));
+            return Some(PathBuf::from(trimmed).join(".config").join("nebula-gtk"));
         }
     }
 
@@ -1738,14 +1764,6 @@ enum RemoveOrigin {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
-enum InstalledSort {
-    #[default]
-    NameAsc,
-    NameDesc,
-    VersionDesc,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 enum InstalledFilter {
     #[default]
     All,
@@ -1759,6 +1777,9 @@ struct AppController {
     app: adw::Application,
     window: adw::ApplicationWindow,
     settings: Rc<RefCell<AppSettings>>,
+    update_buttons: RefCell<Vec<gtk::Button>>,
+    installed_buttons: RefCell<Vec<gtk::Button>>,
+    discover_buttons: RefCell<Vec<gtk::Button>>,
 }
 
 impl AppController {
@@ -1796,6 +1817,9 @@ impl AppController {
             state: RefCell::new(state),
             window,
             settings,
+            update_buttons: RefCell::new(Vec::new()),
+            installed_buttons: RefCell::new(Vec::new()),
+            discover_buttons: RefCell::new(Vec::new()),
         }
     }
 
@@ -1836,6 +1860,11 @@ impl AppController {
         self.widgets.discover.detail_back_button.connect_clicked(
             glib::clone!(@strong self as controller => move |_| {
                 controller.on_discover_detail_back();
+            }),
+        );
+        self.widgets.discover.detail_close_button.connect_clicked(
+            glib::clone!(@strong self as controller => move |_| {
+                controller.on_discover_detail_close();
             }),
         );
         self.widgets
@@ -1900,15 +1929,14 @@ impl AppController {
                 );
             }),
         );
-        self.widgets
-            .discover
-            .category_music_button
-            .connect_toggled(glib::clone!(@strong self as controller => move |btn| {
+        self.widgets.discover.category_music_button.connect_toggled(
+            glib::clone!(@strong self as controller => move |btn| {
                 controller.handle_spotlight_category_toggle(
                     SpotlightCategory::Music,
                     btn.is_active(),
                 );
-            }));
+            }),
+        );
         self.widgets
             .discover
             .category_productivity_button
@@ -1985,13 +2013,6 @@ impl AppController {
 
         self.widgets
             .installed
-            .sort_dropdown
-            .connect_selected_notify(glib::clone!(@strong self as controller => move |dropdown| {
-                controller.on_installed_sort_changed(dropdown.selected());
-            }));
-
-        self.widgets
-            .installed
             .filter_dropdown
             .connect_selected_notify(glib::clone!(@strong self as controller => move |dropdown| {
                 controller.on_installed_filter_changed(dropdown.selected());
@@ -2015,6 +2036,11 @@ impl AppController {
                 controller.on_installed_detail_back();
             }),
         );
+        self.widgets.installed.detail_close_button.connect_clicked(
+            glib::clone!(@strong self as controller => move |_| {
+                controller.on_installed_detail_close();
+            }),
+        );
 
         self.widgets.installed.detail_remove_button.connect_clicked(
             glib::clone!(@strong self as controller => move |_| {
@@ -2030,16 +2056,6 @@ impl AppController {
 
         {
             let state = self.state.borrow();
-            let sort_index = match state.installed_sort {
-                InstalledSort::NameAsc => 0,
-                InstalledSort::NameDesc => 1,
-                InstalledSort::VersionDesc => 2,
-            };
-            self.widgets
-                .installed
-                .sort_dropdown
-                .set_selected(sort_index);
-
             let filter_index = match state.installed_filter_mode {
                 InstalledFilter::All => 0,
                 InstalledFilter::Updates => 1,
@@ -2076,11 +2092,6 @@ impl AppController {
                 controller.on_update_row_activated(row);
             }),
         );
-        self.widgets.updates.list.connect_row_selected(
-            glib::clone!(@strong self as controller => move |_, row| {
-                controller.on_update_row_selected(row.cloned());
-            }),
-        );
         self.widgets.updates.detail_close_button.connect_clicked(
             glib::clone!(@strong self as controller => move |_| {
                 controller.on_updates_detail_close();
@@ -2089,6 +2100,12 @@ impl AppController {
         self.widgets.updates.detail_update_button.connect_clicked(
             glib::clone!(@strong self as controller => move |_| {
                 controller.on_updates_detail_update();
+            }),
+        );
+
+        self.widgets.updates.list.connect_row_selected(
+            glib::clone!(@strong self as controller => move |_, row| {
+                controller.on_update_row_selected(row.cloned());
             }),
         );
 
@@ -2473,7 +2490,6 @@ impl AppController {
                 result,
             });
         });
-
     }
 
     fn execute_remove(self: &Rc<Self>, package: String, origin: RemoveOrigin) {
@@ -2503,7 +2519,6 @@ impl AppController {
             let result = run_xbps_remove(&package);
             let _ = sender.send(AppMessage::RemoveFinished { package, result });
         });
-
     }
 
     fn execute_remove_batch(self: &Rc<Self>, packages: Vec<String>) {
@@ -2543,23 +2558,16 @@ impl AppController {
     fn on_view_changed(self: &Rc<Self>) {
         let current = self.widgets.view_stack.visible_child_name();
         match current.as_deref() {
-            Some("discover") => {
-                if !self.widgets.discover_button.is_active() {
-                }
-            }
+            Some("discover") => if !self.widgets.discover_button.is_active() {},
             Some("installed") => {
-                if !self.widgets.installed_button.is_active() {
-                }
+                if !self.widgets.installed_button.is_active() {}
                 if self.state.borrow().installed_packages.is_empty()
                     && !self.state.borrow().installed_refresh_in_progress
                 {
                     self.refresh_installed_packages();
                 }
             }
-            Some("updates") => {
-                if !self.widgets.updates_button.is_active() {
-                }
-            }
+            Some("updates") => if !self.widgets.updates_button.is_active() {},
             _ => {}
         }
 
@@ -2717,24 +2725,6 @@ impl AppController {
         self.rebuild_installed_list();
     }
 
-    fn on_installed_sort_changed(self: &Rc<Self>, selected: u32) {
-        let sort = match selected {
-            0 => InstalledSort::NameAsc,
-            1 => InstalledSort::NameDesc,
-            2 => InstalledSort::VersionDesc,
-            _ => InstalledSort::NameAsc,
-        };
-
-        {
-            let mut state = self.state.borrow_mut();
-            if state.installed_sort == sort {
-                return;
-            }
-            state.installed_sort = sort;
-        }
-        self.rebuild_installed_list();
-    }
-
     fn on_installed_filter_changed(self: &Rc<Self>, selected: u32) {
         let filter = match selected {
             0 => InstalledFilter::All,
@@ -2831,6 +2821,14 @@ impl AppController {
         if let Some(pkg) = package {
             self.start_update(pkg, false);
         }
+    }
+
+    fn on_installed_detail_close(self: &Rc<Self>) {
+        self.widgets.installed.list.unselect_all();
+        self.clear_installed_detail_history();
+        self.clear_installed_detail();
+        self.update_installed_detail_back_button();
+        self.update_installed_summary();
     }
 
     fn request_installed_detail(&self, package: &str) {
@@ -3357,8 +3355,7 @@ impl AppController {
         let icon = gio::ThemedIcon::new("software-update-available");
         notification.set_icon(&icon);
 
-        self.app
-            .send_notification(Some("updates"), &notification);
+        self.app.send_notification(Some("updates"), &notification);
 
         if let Ok(mut state) = self.state.try_borrow_mut() {
             state.updates_notification_sent = true;
@@ -3397,7 +3394,10 @@ impl AppController {
     fn set_check_buttons_sensitive(&self, enabled: bool) {
         self.widgets.updates.check_button.set_sensitive(enabled);
         self.widgets.updates.refresh_button.set_sensitive(enabled);
-        self.widgets.updates.update_all_button.set_sensitive(enabled);
+        self.widgets
+            .updates
+            .update_all_button
+            .set_sensitive(enabled);
     }
 
     fn set_status_text(&self, text: &str) {
@@ -3409,7 +3409,10 @@ impl AppController {
     fn set_summary_text(&self, text: &str) {
         self.widgets.updates.summary_label.set_text(text);
         let should_show = !text.is_empty() || self.widgets.updates.spinner.is_visible();
-        self.widgets.updates.summary_label.set_visible(!text.is_empty());
+        self.widgets
+            .updates
+            .summary_label
+            .set_visible(!text.is_empty());
         self.widgets.updates.summary_row.set_visible(should_show);
     }
 
@@ -3482,18 +3485,9 @@ impl AppController {
             self.widgets.installed.spinner.set_visible(false);
         }
 
-        self.widgets
-            .installed
-            .status_label
-            .set_text(&status_text);
-        self.widgets
-            .installed
-            .status_label
-            .set_visible(true);
-        self.widgets
-            .installed
-            .footer_label
-            .set_text(&footer_text);
+        self.widgets.installed.status_label.set_text(&status_text);
+        self.widgets.installed.status_label.set_visible(true);
+        self.widgets.installed.footer_label.set_text(&footer_text);
 
         let can_remove = selected_count > 0 && !remove_in_progress && !refreshing;
         self.widgets
@@ -3576,6 +3570,12 @@ impl AppController {
                 let mut state = self.state.borrow_mut();
                 state.installed_detail_package = Some(pkg.name.clone());
             }
+            self.widgets.installed.detail_frame.set_visible(true);
+            self.widgets.installed.detail_close_button.set_visible(true);
+            self.widgets
+                .installed
+                .detail_close_button
+                .set_sensitive(true);
             self.widgets
                 .installed
                 .detail_stack
@@ -3589,21 +3589,11 @@ impl AppController {
                 .detail_version_value
                 .set_text(pkg.version.as_str());
             let has_update = updates.contains(&pkg.name);
-            if has_update {
-                self.widgets
-                    .installed
-                    .detail_update_label
-                    .set_text("Update available.");
-                self.widgets
-                    .installed
-                    .detail_update_label
-                    .set_visible(true);
-            } else {
-                self.widgets
-                    .installed
-                    .detail_update_label
-                    .set_visible(false);
-            }
+            self.widgets
+                .installed
+                .detail_update_label
+                .set_visible(false);
+            self.widgets.installed.detail_update_label.set_text("");
 
             let (remove_in_progress, updates_busy) = {
                 let state = self.state.borrow();
@@ -3708,9 +3698,7 @@ impl AppController {
                     widgets.detail_homepage_link.set_visible(true);
                     widgets.detail_homepage_link.set_label(home);
                     widgets.detail_homepage_link.set_uri(home);
-                    widgets
-                        .detail_homepage_link
-                        .set_tooltip_text(Some(home));
+                    widgets.detail_homepage_link.set_tooltip_text(Some(home));
                 } else {
                     let widgets = &self.widgets.installed;
                     widgets.detail_homepage_link.set_visible(false);
@@ -3766,51 +3754,55 @@ impl AppController {
             }
 
             self.update_installed_required_by_ui(detail.as_ref(), loading, error.as_ref());
+            self.set_installed_row_buttons_visible(false);
         } else {
-            {
-                let mut state = self.state.borrow_mut();
-                state.installed_detail_package = None;
-            }
-            self.widgets
-                .installed
-                .detail_stack
-                .set_visible_child_name("placeholder");
-            self.widgets
-                .installed
-                .detail_update_label
-                .set_visible(false);
-            self.widgets
-                .installed
-                .detail_homepage_link
-                .set_visible(false);
-            self.widgets
-                .installed
-                .detail_homepage_row
-                .set_visible(false);
-            self.widgets
-                .installed
-                .detail_maintainer_value
-                .set_visible(false);
-            self.widgets
-                .installed
-                .detail_maintainer_row
-                .set_visible(false);
-            self.widgets
-                .installed
-                .detail_license_value
-                .set_visible(false);
-            self.update_installed_required_by_ui(None, false, None);
-            self.widgets
-                .installed
-                .detail_remove_button
-                .set_visible(false);
-            self.widgets
-                .installed
-                .detail_update_button
-                .set_visible(false);
+            self.clear_installed_detail();
         }
         self.update_installed_detail_back_button();
         self.update_installed_summary();
+    }
+
+    fn clear_installed_detail(self: &Rc<Self>) {
+        {
+            let mut state = self.state.borrow_mut();
+            state.installed_detail_package = None;
+        }
+        let widgets = &self.widgets.installed;
+        widgets.detail_stack.set_visible_child_name("placeholder");
+        widgets.detail_frame.set_visible(false);
+        widgets.detail_close_button.set_visible(false);
+        widgets.detail_close_button.set_sensitive(false);
+        widgets.detail_name.set_text("Select a package");
+        widgets
+            .detail_description
+            .set_text("Select a package to see details.");
+        widgets.detail_download_value.set_text("—");
+        widgets.detail_version_value.set_text("—");
+        widgets.detail_update_label.set_visible(false);
+        widgets.detail_update_label.set_text("");
+        widgets.detail_homepage_link.set_visible(false);
+        widgets.detail_homepage_link.set_label("");
+        widgets.detail_homepage_link.set_uri("");
+        widgets.detail_homepage_link.set_tooltip_text(None);
+        widgets.detail_homepage_row.set_visible(false);
+        widgets.detail_maintainer_value.set_visible(false);
+        widgets.detail_maintainer_value.set_text("");
+        widgets.detail_maintainer_row.set_visible(false);
+        widgets.detail_license_value.set_visible(false);
+        widgets.detail_license_value.set_text("");
+        widgets.detail_license_row.set_visible(false);
+        widgets.detail_remove_button.set_visible(false);
+        widgets.detail_remove_button.set_sensitive(false);
+        widgets.detail_update_button.set_visible(false);
+        widgets.detail_update_button.set_sensitive(false);
+        self.set_installed_row_buttons_visible(true);
+        self.update_installed_required_by_ui(None, false, None);
+    }
+
+    fn set_installed_row_buttons_visible(&self, visible: bool) {
+        for button in self.installed_buttons.borrow().iter() {
+            button.set_visible(visible);
+        }
     }
 
     fn update_installed_required_by_ui(
@@ -3976,10 +3968,8 @@ impl AppController {
         };
 
         if filtered_index.is_none() {
-            if self.widgets.installed.filter_dropdown.selected() != 0 {
-            }
-            if !self.widgets.installed.search_entry.text().is_empty() {
-            }
+            if self.widgets.installed.filter_dropdown.selected() != 0 {}
+            if !self.widgets.installed.search_entry.text().is_empty() {}
             self.rebuild_installed_list();
             filtered_index = {
                 let state = self.state.borrow();
@@ -4125,6 +4115,12 @@ impl AppController {
         self.update_discover_detail_back_button();
     }
 
+    fn set_discover_row_buttons_visible(&self, visible: bool) {
+        for button in self.discover_buttons.borrow().iter() {
+            button.set_visible(visible);
+        }
+    }
+
     fn on_discover_detail_back(self: &Rc<Self>) {
         let previous = {
             let mut state = self.state.borrow_mut();
@@ -4215,14 +4211,16 @@ impl AppController {
             list.remove(&child);
         }
 
-        let (results, selected_idx, auto_select_first) = {
+        let (results, selected_idx, pending_target, navigation_active) = {
             let state = self.state.borrow();
             (
                 state.search_results.clone(),
                 state.selected_search,
-                state.pending_discover_target.is_none() && !state.discover_detail_navigation_active,
+                state.pending_discover_target.clone(),
+                state.discover_detail_navigation_active,
             )
         };
+        self.discover_buttons.borrow_mut().clear();
         for pkg in &results {
             let row = self.build_discover_row(pkg);
             list.append(&row);
@@ -4232,10 +4230,10 @@ impl AppController {
             if let Some(row) = list.row_at_index(idx as i32) {
                 list.select_row(Some(&row));
             }
-        } else if auto_select_first {
-            if let Some(row) = list.row_at_index(0) {
-                list.select_row(Some(&row));
-            }
+        } else if let Some(target) = pending_target {
+            let _ = self.focus_discover_package(&target, navigation_active);
+        } else {
+            list.unselect_all();
         }
         self.update_discover_details();
     }
@@ -4293,6 +4291,7 @@ impl AppController {
         }
 
         row.add_suffix(&button);
+        self.discover_buttons.borrow_mut().push(button);
 
         row
     }
@@ -4300,6 +4299,7 @@ impl AppController {
     fn rebuild_installed_list(self: &Rc<Self>) {
         let list = &self.widgets.installed.list;
         clear_listbox(list);
+        self.installed_buttons.borrow_mut().clear();
 
         let status_message;
         let selected_index;
@@ -4308,7 +4308,6 @@ impl AppController {
             let mut state = self.state.borrow_mut();
             let filter_lower = state.installed_filter.to_lowercase();
             let filter_mode = state.installed_filter_mode;
-            let sort_mode = state.installed_sort;
             let remove_in_progress = state.remove_in_progress;
             let total_installed = state.installed_packages.len();
 
@@ -4327,11 +4326,7 @@ impl AppController {
             matched.sort_by(|a, b| {
                 let pkg_a = &state.installed_packages[*a];
                 let pkg_b = &state.installed_packages[*b];
-                match sort_mode {
-                    InstalledSort::NameAsc => pkg_a.name.cmp(&pkg_b.name),
-                    InstalledSort::NameDesc => pkg_b.name.cmp(&pkg_a.name),
-                    InstalledSort::VersionDesc => pkg_b.version.cmp(&pkg_a.version),
-                }
+                pkg_a.name.cmp(&pkg_b.name)
             });
 
             state.installed_filtered = matched.clone();
@@ -4433,6 +4428,9 @@ impl AppController {
                     controller.start_update(package_name.clone(), false);
                 }
             });
+            self.installed_buttons
+                .borrow_mut()
+                .push(update_button.clone());
             row.add_suffix(&update_button);
         }
 
@@ -4449,6 +4447,9 @@ impl AppController {
             }
         });
 
+        self.installed_buttons
+            .borrow_mut()
+            .push(remove_button.clone());
         row.add_suffix(&remove_button);
 
         row
@@ -4458,18 +4459,20 @@ impl AppController {
         let list = &self.widgets.updates.list;
         clear_listbox(list);
 
-        let (updates, selected, busy) = {
+        let (updates, selected, busy, detail_open) = {
             let state = self.state.borrow();
             (
                 state.available_updates.clone(),
                 state.selected_updates.clone(),
                 state.update_in_progress || state.updates_loading,
+                state.updates_detail_package.is_some(),
             )
         };
+        self.update_buttons.borrow_mut().clear();
 
         for pkg in &updates {
             let is_selected = selected.contains(&pkg.name);
-            let row = self.build_update_row(pkg, busy, is_selected);
+            let row = self.build_update_row(pkg, busy, detail_open, is_selected);
             list.append(&row);
         }
 
@@ -4498,6 +4501,7 @@ impl AppController {
         self: &Rc<Self>,
         pkg: &PackageInfo,
         disabled: bool,
+        detail_open: bool,
         selected: bool,
     ) -> adw::ActionRow {
         let title = glib::markup_escape_text(&pkg.name);
@@ -4551,6 +4555,7 @@ impl AppController {
         update_button.set_sensitive(!disabled);
         update_button.set_valign(gtk::Align::Center);
         update_button.set_margin_start(12);
+        update_button.set_visible(!detail_open);
 
         let package_name = pkg.name.clone();
         update_button.connect_clicked(glib::clone!(@strong self as controller => move |_| {
@@ -4558,6 +4563,7 @@ impl AppController {
         }));
 
         row.add_suffix(&update_button);
+        self.update_buttons.borrow_mut().push(update_button.clone());
 
         row
     }
@@ -4591,7 +4597,6 @@ impl AppController {
             return;
         }
 
-
         let label = if selected == 0 {
             "Update Selected".to_string()
         } else if selected == total {
@@ -4603,10 +4608,7 @@ impl AppController {
             .updates
             .update_all_button
             .set_sensitive(selected > 0 && !loading && !updating);
-        self.widgets
-            .updates
-            .update_all_button
-            .set_label(&label);
+        self.widgets.updates.update_all_button.set_label(&label);
 
         self.update_updates_detail();
     }
@@ -4756,6 +4758,7 @@ impl AppController {
         widgets.detail_close_button.set_sensitive(false);
         widgets.detail_update_button.set_visible(false);
         widgets.detail_update_button.set_sensitive(false);
+        self.set_all_update_row_buttons_visible(true);
     }
 
     fn update_updates_detail(self: &Rc<Self>) {
@@ -4797,6 +4800,7 @@ impl AppController {
             widgets.detail_stack.set_visible_child_name("detail");
             widgets.detail_close_button.set_visible(true);
             widgets.detail_close_button.set_sensitive(true);
+            self.set_all_update_row_buttons_visible(false);
 
             let display_name = pkg_info
                 .as_ref()
@@ -4876,9 +4880,7 @@ impl AppController {
                     widgets.detail_homepage_link.set_visible(true);
                     widgets.detail_homepage_link.set_label(home);
                     widgets.detail_homepage_link.set_uri(home);
-                    widgets
-                        .detail_homepage_link
-                        .set_tooltip_text(Some(home));
+                    widgets.detail_homepage_link.set_tooltip_text(Some(home));
                 } else {
                     widgets.detail_homepage_row.set_visible(false);
                     widgets.detail_homepage_link.set_visible(false);
@@ -4933,6 +4935,12 @@ impl AppController {
             self.update_updates_required_by_ui(detail.as_ref(), loading, error.as_ref());
         } else {
             self.clear_updates_detail();
+        }
+    }
+
+    fn set_all_update_row_buttons_visible(&self, visible: bool) {
+        for button in self.update_buttons.borrow().iter() {
+            button.set_visible(visible);
         }
     }
 
@@ -5072,10 +5080,7 @@ impl AppController {
             } else {
                 "Checking for updates…"
             };
-            self.widgets
-                .updates
-                .placeholder_label
-                .set_text(message);
+            self.widgets.updates.placeholder_label.set_text(message);
             self.set_summary_text(message);
             self.set_status_text("");
         }
@@ -5117,7 +5122,6 @@ impl AppController {
         success: bool,
         error: Option<String>,
     ) {
-
         let (
             available,
             update_in_progress,
@@ -5230,7 +5234,10 @@ impl AppController {
         let has_updates = !available.is_empty();
         self.widgets.updates.placeholder.set_visible(!has_updates);
         self.widgets.updates.scroller.set_visible(has_updates);
-        self.widgets.updates.update_all_button.set_visible(has_updates);
+        self.widgets
+            .updates
+            .update_all_button
+            .set_visible(has_updates);
         self.widgets.updates.content_row.set_visible(has_updates);
 
         if let Some(text) = footer_update {
@@ -5892,10 +5899,7 @@ impl AppController {
         self.on_search_requested();
     }
 
-    fn on_spotlight_recent_selected(
-        self: &Rc<Self>,
-        row: Option<gtk::ListBoxRow>,
-    ) {
+    fn on_spotlight_recent_selected(self: &Rc<Self>, row: Option<gtk::ListBoxRow>) {
         let Some(row) = row else {
             return;
         };
@@ -5923,10 +5927,7 @@ impl AppController {
         }
         let pkg = {
             let state = self.state.borrow();
-            state
-                .spotlight_recent
-                .get(index as usize)
-                .cloned()
+            state.spotlight_recent.get(index as usize).cloned()
         };
 
         if let Some(pkg) = pkg {
@@ -5980,14 +5981,8 @@ impl AppController {
             }
         }
 
-        self.widgets
-            .discover
-            .spotlight_recent_list
-            .unselect_all();
-        self.widgets
-            .discover
-            .spotlight_recent_detail_spinner
-            .stop();
+        self.widgets.discover.spotlight_recent_list.unselect_all();
+        self.widgets.discover.spotlight_recent_detail_spinner.stop();
         self.widgets
             .discover
             .spotlight_recent_detail_spinner
@@ -6019,7 +6014,6 @@ impl AppController {
                 .spotlight_recent_stack
                 .set_visible_child_name("list");
         }
-
 
         self.update_spotlight_recent_detail();
         self.update_discover_details();
@@ -6127,25 +6121,16 @@ impl AppController {
     }
 
     fn update_spotlight_recent_detail(self: &Rc<Self>) {
-        let (
-            pkg,
-            detail,
-            loading,
-            error,
-            install_in_progress,
-            remove_in_progress,
-        ) = {
+        let (pkg, detail, loading, error, install_in_progress, remove_in_progress) = {
             let state = self.state.borrow();
             let selected = state.spotlight_recent_selected.clone();
-            let pkg = selected
-                .as_ref()
-                .and_then(|name| {
-                    state
-                        .spotlight_recent
-                        .iter()
-                        .find(|pkg| &pkg.name == name)
-                        .cloned()
-                });
+            let pkg = selected.as_ref().and_then(|name| {
+                state
+                    .spotlight_recent
+                    .iter()
+                    .find(|pkg| &pkg.name == name)
+                    .cloned()
+            });
             let detail = selected
                 .as_ref()
                 .and_then(|name| state.discover_detail_cache.get(name).cloned());
@@ -6185,18 +6170,13 @@ impl AppController {
         let description_label = &widgets.spotlight_recent_detail_description;
         let dependencies_stack = &widgets.spotlight_recent_detail_dependencies_stack;
         let dependencies_list = &widgets.spotlight_recent_detail_dependencies_list;
-        let dependencies_placeholder =
-            &widgets.spotlight_recent_detail_dependencies_placeholder;
+        let dependencies_placeholder = &widgets.spotlight_recent_detail_dependencies_placeholder;
         let action_button = &widgets.spotlight_recent_action_button;
 
         if let Some(pkg) = pkg {
             back_button.set_visible(true);
-            widgets
-                .spotlight_recent_detail_container
-                .set_visible(true);
-            widgets
-                .spotlight_recent_detail_name
-                .set_text(&pkg.name);
+            widgets.spotlight_recent_detail_container.set_visible(true);
+            widgets.spotlight_recent_detail_name.set_text(&pkg.name);
 
             let actions_enabled = !loading && !install_in_progress && !remove_in_progress;
             action_button.set_visible(true);
@@ -6221,10 +6201,7 @@ impl AppController {
                 spinner.set_visible(false);
                 if let Some(error) = error.clone() {
                     status_label.set_visible(true);
-                    status_label.set_text(&format!(
-                        "Could not load additional details: {}",
-                        error
-                    ));
+                    status_label.set_text(&format!("Could not load additional details: {}", error));
                 } else {
                     status_label.set_visible(false);
                     status_label.set_text("");
@@ -6326,8 +6303,7 @@ impl AppController {
                     .clone()
                     .unwrap_or_else(|| pkg.description.clone());
                 if description.trim().is_empty() {
-                    description_label
-                        .set_text("This package does not provide a description.");
+                    description_label.set_text("This package does not provide a description.");
                 } else {
                     description_label.set_text(&description);
                 }
@@ -6431,10 +6407,7 @@ impl AppController {
                 dependencies_placeholder.set_text("Dependency information unavailable.");
                 dependencies_list.set_visible(false);
                 dependencies_stack.set_visible_child_name("placeholder");
-                description_label.set_text(&format!(
-                    "Could not load package details: {}",
-                    err
-                ));
+                description_label.set_text(&format!("Could not load package details: {}", err));
             } else {
                 homepage_row.set_visible(false);
                 homepage_link.set_visible(false);
@@ -6468,9 +6441,7 @@ impl AppController {
             }
         } else {
             back_button.set_visible(false);
-            widgets
-                .spotlight_recent_detail_container
-                .set_visible(false);
+            widgets.spotlight_recent_detail_container.set_visible(false);
             spinner.stop();
             spinner.set_visible(false);
             status_label.set_visible(false);
@@ -6534,9 +6505,7 @@ impl AppController {
         } else {
             self.widgets.updates_badge.set_visible(false);
         }
-        self.widgets
-            .updates_page
-            .set_badge_number(count as u32);
+        self.widgets.updates_page.set_badge_number(count as u32);
     }
 
     fn clear_search_results(self: &Rc<Self>) {
@@ -6611,6 +6580,17 @@ impl AppController {
         let dependencies_placeholder = &self.widgets.discover.detail_dependencies_placeholder;
 
         if let Some(pkg) = self.current_search_selection() {
+            self.set_discover_row_buttons_visible(false);
+            self.widgets
+                .discover
+                .detail_name
+                .set_text(pkg.name.as_str());
+            self.widgets.discover.detail_frame.set_visible(true);
+            self.widgets.discover.detail_close_button.set_visible(true);
+            self.widgets
+                .discover
+                .detail_close_button
+                .set_sensitive(true);
             stack.set_visible_child_name("detail");
             {
                 let mut state = self.state.borrow_mut();
@@ -6845,28 +6825,7 @@ impl AppController {
                 button.set_tooltip_text(Some("Install this package."));
             }
         } else {
-            stack.set_visible_child_name("placeholder");
-            button.set_visible(false);
-            version_value.set_text("—");
-            set_download_label(download_value, None, None, None, None);
-            homepage_row.set_visible(false);
-            homepage_link.set_visible(false);
-            maintainer_row.set_visible(false);
-            maintainer_value.set_visible(false);
-            license_row.set_visible(false);
-            license_value.set_visible(false);
-            update_label.set_visible(false);
-            repo_row.set_visible(false);
-            repo_value.set_visible(false);
-            clear_listbox(dependencies_list);
-            dependencies_placeholder.set_text("No runtime dependencies.");
-            dependencies_list.set_visible(false);
-            dependencies_stack.set_visible_child_name("placeholder");
-            description_label.set_text("Select a package to see details.");
-            let mut state = self.state.borrow_mut();
-            state.discover_detail_package = None;
-            state.discover_detail_navigation_active = false;
-            state.pending_discover_target = None;
+            self.clear_discover_details(true);
         }
 
         self.update_discover_detail_back_button();
@@ -6951,6 +6910,12 @@ impl AppController {
             .discover
             .detail_stack
             .set_visible_child_name("placeholder");
+        self.widgets.discover.detail_frame.set_visible(false);
+        self.widgets.discover.detail_close_button.set_visible(false);
+        self.widgets
+            .discover
+            .detail_close_button
+            .set_sensitive(false);
         self.widgets
             .discover
             .detail_action_button
@@ -6996,6 +6961,7 @@ impl AppController {
             .discover
             .detail_dependencies_stack
             .set_visible_child_name("placeholder");
+        self.set_discover_row_buttons_visible(true);
         self.update_discover_detail_back_button();
     }
 
@@ -7011,6 +6977,11 @@ impl AppController {
 
     fn select_search_row_by_name(self: &Rc<Self>, name: &str) {
         let _ = self.focus_discover_package(name, false);
+    }
+
+    fn on_discover_detail_close(self: &Rc<Self>) {
+        self.widgets.discover.list.unselect_all();
+        self.clear_discover_details(false);
     }
 }
 
@@ -7198,6 +7169,7 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         .spacing(12)
         .build();
     spotlight_section_box.set_margin_top(6);
+    spotlight_section_box.add_css_class("nebula-card");
 
     let spotlight_recent_list = gtk::ListBox::new();
     spotlight_recent_list.add_css_class("boxed-list");
@@ -7252,7 +7224,7 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         .visible(false)
         .build();
     recent_detail_action_button.add_css_class("suggested-action");
-    recent_detail_action_button.set_halign(gtk::Align::End);
+    recent_detail_action_button.set_halign(gtk::Align::Start);
     recent_detail_action_button.set_valign(gtk::Align::Center);
 
     let recent_detail_spinner = gtk::Spinner::new();
@@ -7273,7 +7245,6 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         .build();
     recent_detail_header.append(&recent_detail_header_spacer);
     recent_detail_header.append(&recent_detail_spinner);
-    recent_detail_header.append(&recent_detail_action_button);
 
     let make_recent_metadata_label = |text: &str| {
         let label = gtk::Label::builder()
@@ -7469,6 +7440,14 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
     recent_detail_description_row.append(&recent_detail_description_title);
     recent_detail_description_row.append(&recent_detail_description_container);
 
+    let recent_detail_actions_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
+        .halign(gtk::Align::Start)
+        .build();
+    recent_detail_actions_row.set_margin_top(6);
+    recent_detail_actions_row.append(&recent_detail_action_button);
+
     let recent_detail_dependencies_list = gtk::ListBox::new();
     recent_detail_dependencies_list.add_css_class("boxed-list");
     recent_detail_dependencies_list.set_selection_mode(gtk::SelectionMode::None);
@@ -7484,10 +7463,8 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
     recent_detail_dependencies_placeholder.set_text("No runtime dependencies.");
 
     let recent_detail_dependencies_stack = gtk::Stack::new();
-    recent_detail_dependencies_stack.add_named(
-        &recent_detail_dependencies_placeholder,
-        Some("placeholder"),
-    );
+    recent_detail_dependencies_stack
+        .add_named(&recent_detail_dependencies_placeholder, Some("placeholder"));
     recent_detail_dependencies_stack.add_named(&recent_detail_dependencies_list, Some("list"));
     recent_detail_dependencies_stack.set_visible_child_name("placeholder");
 
@@ -7506,11 +7483,13 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         .margin_end(0)
         .build();
     recent_detail_box.add_css_class("background");
+    recent_detail_box.add_css_class("nebula-card");
     recent_detail_box.append(&recent_detail_header);
     recent_detail_box.append(&recent_detail_status);
     recent_detail_box.append(&recent_detail_metadata_box);
     recent_detail_box.append(&recent_detail_update_label);
     recent_detail_box.append(&recent_detail_description_row);
+    recent_detail_box.append(&recent_detail_actions_row);
     recent_detail_box.append(&recent_detail_dependencies_group);
 
     let recent_detail_scroller = gtk::ScrolledWindow::builder()
@@ -7645,8 +7624,10 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         .halign(gtk::Align::Start)
         .wrap(true)
         .wrap_mode(pango::WrapMode::WordChar)
+        .hexpand(true)
         .build();
     detail_name.add_css_class("title-2");
+    detail_name.set_xalign(0.0);
 
     let detail_back_button = gtk::Button::builder()
         .icon_name("go-previous-symbolic")
@@ -7665,20 +7646,33 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         .build();
     detail_action_button.add_css_class("suggested-action");
     detail_action_button.set_visible(false);
+    detail_action_button.set_halign(gtk::Align::Start);
+
+    let detail_close_button = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("Close details")
+        .has_frame(false)
+        .visible(false)
+        .sensitive(false)
+        .build();
+    detail_close_button.add_css_class("flat");
+    detail_close_button.set_focus_on_click(false);
+    detail_close_button.set_valign(gtk::Align::Center);
 
     let detail_header_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .halign(gtk::Align::Fill)
+        .hexpand(true)
         .build();
-    detail_header_row.append(&detail_back_button);
     let detail_header_spacer = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .hexpand(true)
         .build();
+    detail_header_row.append(&detail_back_button);
     detail_header_row.append(&detail_name);
     detail_header_row.append(&detail_header_spacer);
-    detail_header_row.append(&detail_action_button);
+    detail_header_row.append(&detail_close_button);
 
     let detail_metadata_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -7820,6 +7814,17 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
     detail_update_label.add_css_class("accent");
     detail_update_label.set_visible(false);
 
+    let detail_update_button = gtk::Button::builder()
+        .label("Update")
+        .width_request(120)
+        .build();
+    detail_update_button.add_css_class("suggested-action");
+    detail_update_button.set_visible(false);
+    detail_update_button.set_halign(gtk::Align::Start);
+    detail_update_button.set_valign(gtk::Align::Center);
+    detail_update_button.set_margin_start(0);
+    detail_update_button.set_tooltip_text(Some("Install this update."));
+
     let detail_description = gtk::Label::builder()
         .halign(gtk::Align::Start)
         .wrap(true)
@@ -7846,6 +7851,15 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
     detail_description_container.append(&detail_description);
     detail_description_row.append(&detail_description_title);
     detail_description_row.append(&detail_description_container);
+
+    let detail_actions_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::Start)
+        .build();
+    detail_actions_row.set_margin_top(6);
+    detail_actions_row.append(&detail_action_button);
+    detail_actions_row.append(&detail_update_button);
 
     let detail_dependencies_list = gtk::ListBox::new();
     detail_dependencies_list.add_css_class("boxed-list");
@@ -7875,15 +7889,18 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         .orientation(gtk::Orientation::Vertical)
         .spacing(6)
         .hexpand(true)
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
+        .margin_top(10)
+        .margin_bottom(10)
+        .margin_start(10)
         .margin_end(16)
         .build();
+    detail_box.add_css_class("nebula-card");
+    detail_box.add_css_class("compact");
     detail_box.append(&detail_header_row);
     detail_box.append(&detail_metadata_box);
     detail_box.append(&detail_update_label);
     detail_box.append(&detail_description_row);
+    detail_box.append(&detail_actions_row);
     detail_box.append(&detail_dependencies_group);
 
     let detail_scroller = gtk::ScrolledWindow::builder()
@@ -7915,6 +7932,7 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
 
     let detail_frame = gtk::Frame::builder().hexpand(true).vexpand(true).build();
     detail_frame.set_child(Some(&detail_stack));
+    detail_frame.set_visible(false);
 
     let content_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -7922,7 +7940,7 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         .hexpand(true)
         .vexpand(true)
         .build();
-    content_row.set_homogeneous(true);
+    content_row.set_homogeneous(false);
     content_row.append(&scroller);
     content_row.append(&detail_frame);
     content_row.set_visible(false);
@@ -7944,6 +7962,7 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         detail_stack,
         detail_name,
         detail_back_button,
+        detail_close_button,
         detail_version_value,
         detail_repository_row,
         detail_repository_value,
@@ -7960,6 +7979,7 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         detail_dependencies_stack,
         detail_dependencies_list,
         detail_dependencies_placeholder,
+        detail_frame,
         spotlight_spinner,
         spotlight_status,
         spotlight_recent_stack,
@@ -7987,8 +8007,8 @@ fn build_discover_page() -> (gtk::Box, DiscoverWidgets) {
         spotlight_recent_detail_update_label: recent_detail_update_label.clone(),
         spotlight_recent_detail_dependencies_stack: recent_detail_dependencies_stack.clone(),
         spotlight_recent_detail_dependencies_list: recent_detail_dependencies_list.clone(),
-        spotlight_recent_detail_dependencies_placeholder:
-            recent_detail_dependencies_placeholder.clone(),
+        spotlight_recent_detail_dependencies_placeholder: recent_detail_dependencies_placeholder
+            .clone(),
         spotlight_recent_action_button: recent_detail_action_button.clone(),
         spotlight_section_box,
         category_browsers_button,
@@ -8018,26 +8038,13 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         .hexpand(true)
         .build();
 
-    let sort_model = gtk::StringList::new(&["Name (A–Z)", "Name (Z–A)", "Version (newest first)"]);
-    let sort_dropdown = gtk::DropDown::builder()
-        .model(&sort_model)
-        .selected(0)
-        .build();
-    sort_dropdown.set_hexpand(false);
-
     let filter_model = gtk::StringList::new(&["All packages", "Updates available"]);
     let filter_dropdown = gtk::DropDown::builder()
         .model(&filter_model)
         .selected(0)
         .build();
     filter_dropdown.set_hexpand(false);
-
-    let refresh_button = gtk::Button::builder()
-        .icon_name("view-refresh-symbolic")
-        .tooltip_text("Refresh installed packages")
-        .build();
-    refresh_button.add_css_class("flat");
-    refresh_button.set_focus_on_click(false);
+    filter_dropdown.add_css_class("nebula-compact-dropdown");
 
     let controls_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -8045,9 +8052,7 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         .hexpand(true)
         .build();
     controls_row.append(&search_entry);
-    controls_row.append(&sort_dropdown);
     controls_row.append(&filter_dropdown);
-    controls_row.append(&refresh_button);
 
     let status_label = gtk::Label::builder()
         .halign(gtk::Align::Start)
@@ -8064,6 +8069,13 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
     spinner.set_visible(false);
     spinner.set_valign(gtk::Align::Center);
 
+    let refresh_button = gtk::Button::builder()
+        .icon_name("view-refresh-symbolic")
+        .tooltip_text("Refresh installed packages")
+        .build();
+    refresh_button.add_css_class("flat");
+    refresh_button.set_focus_on_click(false);
+
     let remove_selected_button = gtk::Button::builder()
         .label("Remove Selected")
         .halign(gtk::Align::End)
@@ -8078,6 +8090,7 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         .build();
     status_row.set_halign(gtk::Align::Fill);
     status_row.set_baseline_position(gtk::BaselinePosition::Center);
+    status_row.append(&refresh_button);
     status_row.append(&status_label);
     status_row.append(&spinner);
     status_row.append(&remove_selected_button);
@@ -8101,6 +8114,14 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         .wrap_mode(pango::WrapMode::WordChar)
         .build();
     detail_name.add_css_class("title-2");
+    detail_name.set_hexpand(true);
+    detail_name.set_xalign(0.0);
+    detail_name.set_hexpand(true);
+    detail_name.set_xalign(0.0);
+    detail_name.set_hexpand(true);
+    detail_name.set_xalign(0.0);
+    detail_name.set_hexpand(true);
+    detail_name.set_xalign(0.0);
     detail_name.set_text("");
 
     let detail_back_button = gtk::Button::builder()
@@ -8114,13 +8135,31 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
     detail_back_button.set_focus_on_click(false);
     detail_back_button.set_valign(gtk::Align::Center);
 
+    let detail_close_button = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("Close details")
+        .has_frame(false)
+        .visible(false)
+        .sensitive(false)
+        .build();
+    detail_close_button.add_css_class("flat");
+    detail_close_button.set_focus_on_click(false);
+    detail_close_button.set_valign(gtk::Align::Center);
+
     let detail_header_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
-        .halign(gtk::Align::Start)
+        .halign(gtk::Align::Fill)
+        .hexpand(true)
+        .build();
+    let detail_header_row_spacer = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .hexpand(true)
         .build();
     detail_header_row.append(&detail_back_button);
     detail_header_row.append(&detail_name);
+    detail_header_row.append(&detail_header_row_spacer);
+    detail_header_row.append(&detail_close_button);
 
     let detail_metadata_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -8273,6 +8312,7 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         .width_request(120)
         .build();
     detail_remove_button.add_css_class("destructive-action");
+    detail_remove_button.set_halign(gtk::Align::Start);
     detail_remove_button.set_visible(false);
     detail_remove_button.set_valign(gtk::Align::Center);
     detail_remove_button.set_tooltip_text(Some("Remove this package."));
@@ -8282,24 +8322,19 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         .width_request(120)
         .build();
     detail_update_button.add_css_class("suggested-action");
+    detail_update_button.set_halign(gtk::Align::Start);
     detail_update_button.set_visible(false);
     detail_update_button.set_valign(gtk::Align::Center);
-    detail_update_button.set_margin_start(6);
+    detail_update_button.set_margin_start(0);
     detail_update_button.set_tooltip_text(Some("Install the available update."));
 
     let detail_header_container = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .halign(gtk::Align::Fill)
-        .build();
-    let header_spacer = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
         .hexpand(true)
         .build();
     detail_header_container.append(&detail_header_row);
-    detail_header_container.append(&header_spacer);
-    detail_header_container.append(&detail_remove_button);
-    detail_header_container.append(&detail_update_button);
 
     let detail_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -8310,10 +8345,22 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         .margin_start(10)
         .margin_end(16)
         .build();
+    detail_box.add_css_class("nebula-card");
+    detail_box.add_css_class("compact");
     detail_box.append(&detail_header_container);
     detail_box.append(&detail_metadata_box);
     detail_box.append(&detail_update_label);
     detail_box.append(&detail_description_row);
+
+    let detail_actions_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::Start)
+        .build();
+    detail_actions_row.set_margin_top(6);
+    detail_actions_row.append(&detail_remove_button);
+    detail_actions_row.append(&detail_update_button);
+    detail_box.append(&detail_actions_row);
 
     let detail_required_by_placeholder = gtk::Label::builder()
         .halign(gtk::Align::Start)
@@ -8370,6 +8417,7 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
 
     let detail_frame = gtk::Frame::builder().hexpand(true).vexpand(true).build();
     detail_frame.set_child(Some(&detail_stack));
+    detail_frame.set_visible(false);
 
     let content_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -8377,7 +8425,7 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         .hexpand(true)
         .vexpand(true)
         .build();
-    content_row.set_homogeneous(true);
+    content_row.set_homogeneous(false);
     content_row.append(&scroller);
     content_row.append(&detail_frame);
 
@@ -8400,14 +8448,15 @@ fn build_installed_page() -> (gtk::Box, InstalledWidgets) {
         search_entry,
         status_label,
         spinner,
-        sort_dropdown,
         filter_dropdown,
         remove_selected_button,
         list,
         detail_stack,
+        detail_frame,
         detail_remove_button,
         detail_update_button,
         detail_back_button,
+        detail_close_button,
         detail_name,
         detail_version_value,
         detail_description,
@@ -8546,14 +8595,21 @@ fn build_updates_page() -> (gtk::Box, UpdatesWidgets) {
     detail_close_button.add_css_class("flat");
     detail_close_button.set_focus_on_click(false);
     detail_close_button.set_valign(gtk::Align::Center);
+    detail_close_button.set_halign(gtk::Align::End);
 
     let detail_header_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .halign(gtk::Align::Fill)
         .build();
-    detail_header_row.append(&detail_close_button);
+    detail_header_row.set_hexpand(true);
+    let detail_header_row_spacer = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .hexpand(true)
+        .build();
     detail_header_row.append(&detail_name);
+    detail_header_row.append(&detail_header_row_spacer);
+    detail_header_row.append(&detail_close_button);
 
     let make_metadata_label = |text: &str| {
         let label = gtk::Label::builder()
@@ -8676,6 +8732,17 @@ fn build_updates_page() -> (gtk::Box, UpdatesWidgets) {
     detail_update_label.add_css_class("accent");
     detail_update_label.set_visible(false);
 
+    let detail_update_button = gtk::Button::builder()
+        .label("Update")
+        .width_request(120)
+        .build();
+    detail_update_button.add_css_class("suggested-action");
+    detail_update_button.set_visible(false);
+    detail_update_button.set_halign(gtk::Align::Start);
+    detail_update_button.set_valign(gtk::Align::Center);
+    detail_update_button.set_margin_start(0);
+    detail_update_button.set_tooltip_text(Some("Install this update."));
+
     let detail_description = gtk::Label::builder()
         .halign(gtk::Align::Start)
         .wrap(true)
@@ -8703,28 +8770,21 @@ fn build_updates_page() -> (gtk::Box, UpdatesWidgets) {
     detail_description_row.append(&detail_description_title);
     detail_description_row.append(&detail_description_container);
 
-    let detail_update_button = gtk::Button::builder()
-        .label("Update")
-        .width_request(120)
-        .build();
-    detail_update_button.add_css_class("suggested-action");
-    detail_update_button.set_visible(false);
-    detail_update_button.set_valign(gtk::Align::Center);
-    detail_update_button.set_margin_start(6);
-    detail_update_button.set_tooltip_text(Some("Install this update."));
-
     let detail_header_container = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .halign(gtk::Align::Fill)
         .build();
-    let detail_header_spacer = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .hexpand(true)
-        .build();
+    detail_header_container.set_hexpand(true);
     detail_header_container.append(&detail_header_row);
-    detail_header_container.append(&detail_header_spacer);
-    detail_header_container.append(&detail_update_button);
+
+    let detail_actions_row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::Start)
+        .build();
+    detail_actions_row.set_margin_top(6);
+    detail_actions_row.append(&detail_update_button);
 
     let detail_required_by_placeholder = gtk::Label::builder()
         .halign(gtk::Align::Start)
@@ -8763,6 +8823,7 @@ fn build_updates_page() -> (gtk::Box, UpdatesWidgets) {
     detail_box.append(&detail_metadata_box);
     detail_box.append(&detail_update_label);
     detail_box.append(&detail_description_row);
+    detail_box.append(&detail_actions_row);
     detail_box.append(&detail_required_by_group);
 
     let detail_scroller = gtk::ScrolledWindow::builder()

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
   <gresource prefix="/tech/geektoshi/Nebula">
+    <file>style.css</file>
     <file>icons/nebula.png</file>
     <file>icons/browsers.svg</file>
     <file>icons/chat.svg</file>

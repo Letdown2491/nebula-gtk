@@ -562,8 +562,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "nebula-store"
-version = "0.6.1"
+name = "nebula-gtk"
+version = "0.7.2"
 dependencies = [
  "chrono",
  "glib-build-tools",

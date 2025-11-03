@@ -3,6 +3,9 @@ use std::io::Cursor;
 use std::process::Command;
 use std::time::Duration;
 
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
 use chrono::{DateTime, FixedOffset, LocalResult, NaiveDateTime, TimeZone, Utc};
 use feed_rs::parser;
 use reqwest::blocking::Client;
@@ -26,8 +29,16 @@ pub(crate) fn fetch_remote_spotlight_metadata() -> Result<Vec<RemotePackageMetad
         Ok(_) => fetch_remote_spotlight_metadata_with_xbps(),
         Err(feed_err) => {
             eprintln!("Failed to refresh spotlight feed: {}", feed_err);
-            fetch_remote_spotlight_metadata_with_xbps()
-                .map_err(|xbps_err| format!("{feed_err}; fallback failed: {xbps_err}"))
+            let now = Utc::now();
+            if can_attempt_fallback(now) {
+                fetch_remote_spotlight_metadata_with_xbps()
+                    .map_err(|xbps_err| format!("{feed_err}; fallback failed: {xbps_err}"))
+            } else {
+                Err(format!(
+                    "{feed_err}; skipping fallback (last attempt less than {} hours ago)",
+                    FALLBACK_COOLDOWN_SECS / 3600
+                ))
+            }
         }
     }
 }
@@ -35,6 +46,22 @@ pub(crate) fn fetch_remote_spotlight_metadata() -> Result<Vec<RemotePackageMetad
 const VOID_PACKAGES_ATOM_URL: &str =
     "https://github.com/void-linux/void-packages/commits/master.atom";
 const HTTP_TIMEOUT_SECS: u64 = 10;
+const FALLBACK_COOLDOWN_SECS: i64 = 6 * 60 * 60;
+
+static LAST_FALLBACK_ATTEMPT: Lazy<Mutex<Option<DateTime<Utc>>>> = Lazy::new(|| Mutex::new(None));
+
+fn can_attempt_fallback(now: DateTime<Utc>) -> bool {
+    let mut guard = LAST_FALLBACK_ATTEMPT
+        .lock()
+        .expect("fallback mutex poisoned");
+    if let Some(last) = *guard {
+        if now.signed_duration_since(last).num_seconds() < FALLBACK_COOLDOWN_SECS {
+            return false;
+        }
+    }
+    *guard = Some(now);
+    true
+}
 
 fn fetch_remote_spotlight_metadata_from_feed() -> Result<Vec<RemotePackageMetadata>, String> {
     let client = Client::builder()

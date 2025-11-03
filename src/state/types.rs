@@ -142,6 +142,9 @@ pub(crate) enum AppMessage {
         task: MaintenanceTask,
         result: Result<CommandResult, String>,
     },
+    MirrorsDetected {
+        mirrors: Vec<String>,
+    },
 }
 
 #[derive(Clone, Copy)]

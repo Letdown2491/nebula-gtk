@@ -1,67 +1,15 @@
-use std::collections::HashMap;
-
-use once_cell::sync::Lazy;
-use serde::Deserialize;
-
 const FALLBACK_CATEGORY: &str = "Other";
 const FALLBACK_ICON: &str = "/tech/geektoshi/Nebula/icons/voidlinux.png";
 
-#[derive(Deserialize)]
-struct SuggestionFile {
-    packages: Vec<PackageRecord>,
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/categories_map.rs"));
 }
-
-#[derive(Deserialize)]
-struct PackageRecord {
-    pkgname: String,
-    category: String,
-}
-
-struct CategoryIndex {
-    package_to_category: HashMap<String, Box<str>>,
-}
-
-impl CategoryIndex {
-    fn load() -> Self {
-        let raw = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/data/generated/category_suggestions.json"
-        ));
-
-        match serde_json::from_str::<SuggestionFile>(raw) {
-            Ok(file) => {
-                let mut map = HashMap::with_capacity(file.packages.len());
-                for entry in file.packages {
-                    if entry.pkgname.is_empty() || entry.category.is_empty() {
-                        continue;
-                    }
-                    map.insert(entry.pkgname.to_ascii_lowercase(), entry.category.into());
-                }
-                Self {
-                    package_to_category: map,
-                }
-            }
-            Err(err) => {
-                eprintln!("Failed to parse category suggestions: {}", err);
-                Self {
-                    package_to_category: HashMap::new(),
-                }
-            }
-        }
-    }
-
-    fn category_for(&self, package: &str) -> Option<&str> {
-        self.package_to_category
-            .get(&package.to_ascii_lowercase())
-            .map(|value| value.as_ref())
-    }
-}
-
-static CATEGORY_INDEX: Lazy<CategoryIndex> = Lazy::new(CategoryIndex::load);
 
 pub(crate) fn package_category(package: &str) -> &'static str {
-    CATEGORY_INDEX
-        .category_for(package)
+    let lowercase = package.to_ascii_lowercase();
+    generated::CATEGORY_MAP
+        .get(lowercase.as_str())
+        .copied()
         .unwrap_or(FALLBACK_CATEGORY)
 }
 

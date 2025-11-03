@@ -747,6 +747,51 @@ impl AppController {
             AppMessage::MaintenanceFinished { task, result } => {
                 self.finish_maintenance(task, result);
             }
+            AppMessage::MirrorsDetected { mirrors } => {
+                self.finish_mirror_detection(mirrors);
+            }
+        }
+    }
+
+    fn finish_mirror_detection(self: &Rc<Self>, mirrors: Vec<String>) {
+        if mirrors.is_empty() {
+            return;
+        }
+
+        let filtered: Vec<String> = mirrors
+            .into_iter()
+            .filter(|id| find_mirror(id.as_str()).is_some())
+            .collect();
+
+        if filtered.is_empty() {
+            return;
+        }
+
+        let current = self.state.borrow().selected_mirror_ids.clone();
+        let current_set: std::collections::HashSet<_> = current.iter().collect();
+        let filtered_set: std::collections::HashSet<_> = filtered.iter().collect();
+        if current_set == filtered_set {
+            return;
+        }
+
+        {
+            let mut state = self.state.borrow_mut();
+            state.selected_mirror_ids = filtered.clone();
+        }
+
+        set_active_mirrors_by_ids(&filtered);
+
+        {
+            let mut settings = self.settings.borrow_mut();
+            settings.mirror_selection = filtered.clone();
+            if let Err(err) = save_app_settings(&settings) {
+                eprintln!("Failed to persist mirror selection: {}", err);
+            }
+        }
+
+        self.show_toast("Detected active mirrors updated.");
+        if let Some(window) = self.mirrors_window.borrow().as_ref() {
+            window.queue_draw();
         }
     }
 
@@ -981,15 +1026,10 @@ impl AppController {
                 .collect::<Vec<_>>()
         };
 
-        let detected_ids = detect_active_repositories()
-            .ok()
-            .map(|urls| map_urls_to_ids(&urls))
-            .unwrap_or_default();
-
-        let mut initial_ids = if !detected_ids.is_empty() {
-            detected_ids
+        let mut initial_ids = if stored_ids.is_empty() {
+            vec![default_mirror_id().to_string()]
         } else {
-            stored_ids.clone()
+            stored_ids
         };
 
         initial_ids.retain(|id| find_mirror(id.as_str()).is_some());
@@ -998,9 +1038,20 @@ impl AppController {
             initial_ids.push(default_mirror_id().to_string());
         }
 
-        if let Err(err) = self.apply_mirror_selection(initial_ids, true, false) {
+        if let Err(err) = self.apply_mirror_selection(initial_ids.clone(), true, false) {
             eprintln!("Failed to initialize mirrors: {}", err);
         }
+
+        let sender = self.sender.clone();
+        thread::spawn(move || match detect_active_repositories() {
+            Ok(urls) => {
+                let mirrors = map_urls_to_ids(&urls);
+                let _ = sender.send(AppMessage::MirrorsDetected { mirrors });
+            }
+            Err(err) => {
+                eprintln!("Failed to detect active repositories: {}", err);
+            }
+        });
     }
 
     pub(crate) fn show_toast(&self, message: &str) {
@@ -1174,6 +1225,7 @@ impl AppController {
         match self.apply_mirror_selection(selected.clone(), true, true) {
             Ok(_) => {
                 self.show_toast("Mirrors updated.");
+                self.start_mirror_write_worker(selected.clone());
             }
             Err(err) => {
                 self.show_error_dialog("Mirror Update Failed", &err);
@@ -1192,6 +1244,16 @@ impl AppController {
         });
     }
 
+    fn start_mirror_write_worker(self: &Rc<Self>, ids: Vec<String>) {
+        let sender = self.sender.clone();
+        thread::spawn(move || {
+            if let Err(err) = write_repository_config(&ids) {
+                eprintln!("Failed to write repository config: {}", err);
+            }
+            let _ = sender.send(AppMessage::MirrorsDetected { mirrors: ids });
+        });
+    }
+
     fn apply_mirror_selection(
         self: &Rc<Self>,
         ids: Vec<String>,
@@ -1203,33 +1265,60 @@ impl AppController {
         }
 
         if update_config {
-            write_repository_config(&ids)?;
-        }
-
-        if persist_settings {
-            let mut snapshot = {
-                let settings_ref = self.settings.borrow();
-                settings_ref.clone()
-            };
-            snapshot.mirror_selection = ids.clone();
-            save_app_settings(&snapshot)?;
             {
-                let mut settings = self.settings.borrow_mut();
-                *settings = snapshot;
+                let mut state = self.state.borrow_mut();
+                state.selected_mirror_ids = ids.clone();
             }
+
+            set_active_mirrors_by_ids(&ids);
+
+            if persist_settings {
+                let mut snapshot = {
+                    let settings_ref = self.settings.borrow();
+                    settings_ref.clone()
+                };
+                snapshot.mirror_selection = ids.clone();
+                if let Err(err) = save_app_settings(&snapshot) {
+                    eprintln!("Failed to save mirror selection: {}", err);
+                }
+                {
+                    let mut settings = self.settings.borrow_mut();
+                    *settings = snapshot;
+                }
+            } else {
+                let mut settings = self.settings.borrow_mut();
+                settings.mirror_selection = ids.clone();
+            }
+
+            self.start_mirror_write_worker(ids);
+            Ok(())
         } else {
-            let mut settings = self.settings.borrow_mut();
-            settings.mirror_selection = ids.clone();
+            {
+                let mut state = self.state.borrow_mut();
+                state.selected_mirror_ids = ids.clone();
+            }
+            set_active_mirrors_by_ids(&ids);
+
+            if persist_settings {
+                let mut snapshot = {
+                    let settings_ref = self.settings.borrow();
+                    settings_ref.clone()
+                };
+                snapshot.mirror_selection = ids.clone();
+                if let Err(err) = save_app_settings(&snapshot) {
+                    eprintln!("Failed to save mirror selection: {}", err);
+                }
+                {
+                    let mut settings = self.settings.borrow_mut();
+                    *settings = snapshot;
+                }
+            } else {
+                let mut settings = self.settings.borrow_mut();
+                settings.mirror_selection = ids.clone();
+            }
+
+            Ok(())
         }
-
-        {
-            let mut state = self.state.borrow_mut();
-            state.selected_mirror_ids = ids.clone();
-        }
-
-        set_active_mirrors_by_ids(&ids);
-
-        Ok(())
     }
 
     pub(crate) fn show_preferences(self: &Rc<Self>) {
@@ -1438,7 +1527,7 @@ impl AppController {
         title.add_css_class("title-2");
 
         let description = gtk::Label::builder()
-            .label("Nebula makes it easy to discover, install, and update software on Void Linux.")
+            .label("Nebula is a GTK frontend for Void Linux's XBPS software tooling.")
             .wrap(true)
             .wrap_mode(pango::WrapMode::WordChar)
             .halign(gtk::Align::Center)

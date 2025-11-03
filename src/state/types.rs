@@ -28,6 +28,7 @@ pub(crate) struct AppState {
     pub(crate) installed_detail_history: Vec<String>,
     pub(crate) installed_detail_navigation_active: bool,
     pub(crate) installed_status_message: Option<String>,
+    pub(crate) installed_row_buttons_visible: bool,
     pub(crate) available_updates: Vec<PackageInfo>,
     pub(crate) available_update_names: HashSet<String>,
     pub(crate) updates_loading: bool,

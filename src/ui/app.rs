@@ -46,7 +46,7 @@ pub(crate) fn build_ui(app: &adw::Application) {
     let (initial_width, initial_height) = {
         let settings = settings.borrow();
         (
-            settings.window_width.unwrap_or(1100),
+            settings.window_width.unwrap_or(1080),
             settings.window_height.unwrap_or(720),
         )
     };
@@ -73,12 +73,10 @@ pub(crate) fn build_ui(app: &adw::Application) {
     let header_bar = adw::HeaderBar::new();
     header_bar.add_css_class("nebula-headerbar");
     header_bar.set_hexpand(true);
-    let header_title = gtk::Label::builder()
-        .label("Nebula")
-        .halign(gtk::Align::Center)
-        .build();
-    header_title.add_css_class("nebula-header-title");
-    header_bar.set_title_widget(Some(&header_title));
+    let view_switcher = adw::ViewSwitcher::new();
+    view_switcher.set_stack(Some(&view_stack));
+    view_switcher.set_halign(gtk::Align::Center);
+    header_bar.set_title_widget(Some(&view_switcher));
     header_bar.set_show_end_title_buttons(false);
     header_bar.set_show_start_title_buttons(false);
     root_box.append(&header_bar);
@@ -97,17 +95,25 @@ pub(crate) fn build_ui(app: &adw::Application) {
     stored_theme.apply(&style_manager);
     let current_theme = stored_theme.key().to_string();
     apply_theme_css_class(&window, style_manager.is_dark());
-    style_manager.connect_dark_notify(glib::clone!(@weak window => move |manager| {
-        apply_theme_css_class(&window, manager.is_dark());
-    }));
+    style_manager.connect_dark_notify(glib::clone!(
+        #[weak]
+        window,
+        move |manager| {
+            apply_theme_css_class(&window, manager.is_dark());
+        },
+    ));
 
     let theme_action = gio::SimpleAction::new_stateful(
         "theme",
         Some(&VariantTy::STRING),
         &Variant::from(current_theme.as_str()),
     );
-    theme_action.connect_change_state(
-        glib::clone!(@weak style_manager, @strong settings => move |action, value| {
+    theme_action.connect_change_state(glib::clone!(
+        #[weak]
+        style_manager,
+        #[strong]
+        settings,
+        move |action, value| {
             let Some(value) = value else {
                 return;
             };
@@ -123,8 +129,8 @@ pub(crate) fn build_ui(app: &adw::Application) {
                     }
                 }
             }
-        }),
-    );
+        },
+    ));
     app.add_action(&theme_action);
 
     let preferences_action = gio::SimpleAction::new("preferences", None);
@@ -180,10 +186,14 @@ pub(crate) fn build_ui(app: &adw::Application) {
         let action = theme_action.clone();
         let popover = popover.clone();
         let key = key.clone();
-        button.connect_clicked(glib::clone!(@weak popover => move |_| {
-            action.activate(Some(&Variant::from(key.as_str())));
-            popover.popdown();
-        }));
+        button.connect_clicked(glib::clone!(
+            #[weak]
+            popover,
+            move |_| {
+                action.activate(Some(&Variant::from(key.as_str())));
+                popover.popdown();
+            },
+        ));
     }
 
     let theme_buttons_rc = Rc::new(theme_buttons);
@@ -203,11 +213,13 @@ pub(crate) fn build_ui(app: &adw::Application) {
         }
     };
     refresh_theme_buttons(style_manager.color_scheme(), &theme_buttons_rc);
-    style_manager.connect_color_scheme_notify(
-        glib::clone!(@strong theme_buttons_rc => move |manager| {
+    style_manager.connect_color_scheme_notify(glib::clone!(
+        #[strong]
+        theme_buttons_rc,
+        move |manager| {
             refresh_theme_buttons(manager.color_scheme(), &theme_buttons_rc);
-        }),
-    );
+        },
+    ));
 
     theme_box.append(&system_button);
     theme_box.append(&light_button);
@@ -298,11 +310,6 @@ pub(crate) fn build_ui(app: &adw::Application) {
         page.set_icon_name(Some("tools"));
     }
     updates_page_ref.set_badge_number(0);
-    let view_switcher_bar = adw::ViewSwitcherBar::new();
-    view_switcher_bar.set_stack(Some(&view_stack));
-    view_switcher_bar.set_reveal(true);
-    view_switcher_bar.add_css_class("nebula-view-switcher-bar");
-    content.append(&view_switcher_bar);
     content.append(&view_stack);
 
     let widgets = AppWidgets {
@@ -384,6 +391,15 @@ pub(crate) fn build_ui(app: &adw::Application) {
 
     controller.initialize_spotlight();
     controller.refresh_installed_packages();
+    {
+        let controller_weak = Rc::downgrade(&controller);
+        glib::idle_add_local(move || {
+            if let Some(controller) = controller_weak.upgrade() {
+                controller.refresh_updates(true);
+            }
+            glib::ControlFlow::Break
+        });
+    }
 
     let settings_for_close = Rc::clone(&settings);
     window.connect_close_request(move |win| {

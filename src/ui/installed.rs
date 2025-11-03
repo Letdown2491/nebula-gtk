@@ -1,3 +1,5 @@
+use gtk::gio;
+use gtk::glib;
 use gtk::pango;
 use gtk4 as gtk;
 use libadwaita as adw;
@@ -12,7 +14,10 @@ pub(crate) struct InstalledWidgets {
     pub(crate) spinner: gtk::Spinner,
     pub(crate) filter_dropdown: gtk::DropDown,
     pub(crate) remove_selected_button: gtk::Button,
-    pub(crate) list: gtk::ListBox,
+    pub(crate) list_store: gio::ListStore,
+    pub(crate) list_selection: gtk::SingleSelection,
+    pub(crate) list_view: gtk::ListView,
+    pub(crate) list_factory: gtk::SignalListItemFactory,
     pub(crate) detail_stack: gtk::Stack,
     pub(crate) detail_frame: gtk::Frame,
     pub(crate) detail_remove_button: gtk::Button,
@@ -24,7 +29,7 @@ pub(crate) struct InstalledWidgets {
     pub(crate) detail_description: gtk::Label,
     pub(crate) detail_download_value: gtk::Label,
     pub(crate) detail_homepage_row: gtk::Box,
-    pub(crate) detail_homepage_link: gtk::LinkButton,
+    pub(crate) detail_homepage_link: gtk::Label,
     pub(crate) detail_maintainer_row: gtk::Box,
     pub(crate) detail_maintainer_value: gtk::Label,
     pub(crate) detail_license_row: gtk::Box,
@@ -119,18 +124,25 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
     status_row.append(&spinner);
     status_row.append(&remove_selected_button);
 
-    let list = gtk::ListBox::new();
-    list.add_css_class("boxed-list");
-    list.set_selection_mode(gtk::SelectionMode::Single);
-    list.set_activate_on_single_click(false);
-    list.set_focusable(false);
+    let list_store = gio::ListStore::new::<glib::BoxedAnyObject>();
+    let list_selection = gtk::SingleSelection::new(Some(list_store.clone()));
+    list_selection.set_autoselect(false);
+    list_selection.set_can_unselect(true);
+
+    let list_factory = gtk::SignalListItemFactory::new();
+
+    let list_view = gtk::ListView::new(Some(list_selection.clone()), Some(list_factory.clone()));
+    list_view.add_css_class("boxed-list");
+    list_view.set_vexpand(true);
+    list_view.set_hexpand(true);
+    list_view.set_single_click_activate(false);
 
     let scroller = gtk::ScrolledWindow::builder()
         .hexpand(true)
         .vexpand(true)
         .min_content_height(320)
         .build();
-    scroller.set_child(Some(&list));
+    scroller.set_child(Some(&list_view));
 
     let detail_name = gtk::Label::builder()
         .halign(gtk::Align::Start)
@@ -274,19 +286,16 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
     detail_maintainer_row.append(&detail_maintainer_value);
     detail_metadata_box.append(&detail_maintainer_row);
 
-    let detail_homepage_link = gtk::LinkButton::builder()
-        .label("")
+    let detail_homepage_link = gtk::Label::builder()
+        .use_markup(true)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
         .halign(gtk::Align::Start)
-        .has_frame(false)
         .visible(false)
         .build();
-    detail_homepage_link.add_css_class("flat");
-    detail_homepage_link.set_margin_top(0);
-    detail_homepage_link.set_margin_bottom(0);
-    detail_homepage_link.set_margin_start(0);
-    detail_homepage_link.set_margin_end(0);
-    detail_homepage_link.set_valign(gtk::Align::Center);
     detail_homepage_link.set_hexpand(true);
+    detail_homepage_link.set_xalign(0.0);
+    detail_homepage_link.set_selectable(false);
     let detail_homepage_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
@@ -479,7 +488,10 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
         spinner,
         filter_dropdown,
         remove_selected_button,
-        list,
+        list_store,
+        list_selection,
+        list_view,
+        list_factory,
         detail_stack,
         detail_frame,
         detail_remove_button,

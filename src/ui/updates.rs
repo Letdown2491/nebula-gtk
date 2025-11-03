@@ -25,7 +25,7 @@ pub(crate) struct UpdatesWidgets {
     pub(crate) detail_version_value: gtk::Label,
     pub(crate) detail_download_value: gtk::Label,
     pub(crate) detail_homepage_row: gtk::Box,
-    pub(crate) detail_homepage_link: gtk::LinkButton,
+    pub(crate) detail_homepage_link: gtk::Label,
     pub(crate) detail_maintainer_row: gtk::Box,
     pub(crate) detail_maintainer_value: gtk::Label,
     pub(crate) detail_license_row: gtk::Box,
@@ -271,19 +271,16 @@ pub(crate) fn build_page() -> (gtk::Box, UpdatesWidgets) {
     detail_maintainer_row.append(&detail_maintainer_value);
     detail_metadata_box.append(&detail_maintainer_row);
 
-    let detail_homepage_link = gtk::LinkButton::builder()
-        .label("")
+    let detail_homepage_link = gtk::Label::builder()
+        .use_markup(true)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
         .halign(gtk::Align::Start)
-        .has_frame(false)
         .visible(false)
         .build();
-    detail_homepage_link.add_css_class("flat");
-    detail_homepage_link.set_margin_top(0);
-    detail_homepage_link.set_margin_bottom(0);
-    detail_homepage_link.set_margin_start(0);
-    detail_homepage_link.set_margin_end(0);
-    detail_homepage_link.set_valign(gtk::Align::Center);
     detail_homepage_link.set_hexpand(true);
+    detail_homepage_link.set_xalign(0.0);
+    detail_homepage_link.set_selectable(false);
     let detail_homepage_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)

@@ -5,8 +5,8 @@ Nebula is a GTK/libadwaita front-end for browsing and managing Void Linux packag
 ## Requirements
 
 - A Void Linux installation
-- GTK 4 and libadwaita runtimes
-- Rust 1.76 or newer
+- GTK 4.14+ and libadwaita 1.4+ runtimes
+- Rust 1.88.0 or newer (tested with 1.88.0)
 
 ## Quick Start
 
@@ -20,7 +20,7 @@ cargo run --bin nebula-gtk
 cargo build --release --bin nebula-gtk
 ```
 
-The optimized binary is written to `target/release/nebula-gtk`. Use `cargo run --release` if you want to execute the release build directly after compiling.
+The optimized binary is written to `target/release/nebula-gtk`. Use `cargo run --release nebula-gtk` if you want to execute the release build directly after compiling.
 
 ## System Install
 

@@ -12,7 +12,7 @@ use crate::categories::icon_resource_for_package;
 use crate::details::InstalledDetail;
 use crate::helpers::{
     clear_listbox, format_relative_time, glib_datetime_to_chrono, query_installed_detail,
-    sanitize_contact_field,
+    sanitize_contact_field, select_row_if_attached, set_link_label,
 };
 use crate::state::controller::AppController;
 use crate::state::types::{AppMessage, AppState};
@@ -163,7 +163,7 @@ impl AppController {
         if let Some(target) = detail_target {
             if let Some(idx) = updates.iter().position(|pkg| pkg.name == target) {
                 if let Some(row) = list.row_at_index(idx as i32) {
-                    list.select_row(Some(&row));
+                    select_row_if_attached(list, &row);
                 }
                 let mut state = self.state.borrow_mut();
                 state.selected_update = Some(idx);
@@ -215,9 +215,13 @@ impl AppController {
         check_button.set_sensitive(!disabled);
         check_button.set_valign(gtk::Align::Center);
         let package_name = pkg.name.clone();
-        check_button.connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-            controller.on_update_selection_changed(package_name.clone(), btn.is_active());
-        }));
+        check_button.connect_toggled(glib::clone!(
+            #[strong(rename_to = controller)]
+            self,
+            move |btn| {
+                controller.on_update_selection_changed(package_name.clone(), btn.is_active());
+            }
+        ));
 
         let icon = gtk::Image::from_resource(icon_resource_for_package(&pkg.name));
         icon.set_pixel_size(32);
@@ -251,9 +255,13 @@ impl AppController {
         update_button.set_visible(!detail_open);
 
         let package_name = pkg.name.clone();
-        update_button.connect_clicked(glib::clone!(@strong self as controller => move |_| {
-            controller.start_update(package_name.clone(), false);
-        }));
+        update_button.connect_clicked(glib::clone!(
+            #[strong(rename_to = controller)]
+            self,
+            move |_| {
+                controller.start_update(package_name.clone(), false);
+            }
+        ));
 
         row.add_suffix(&update_button);
         self.update_buttons.borrow_mut().push(update_button.clone());
@@ -549,13 +557,10 @@ impl AppController {
                     .filter(|s| !s.is_empty())
                 {
                     widgets.detail_homepage_row.set_visible(true);
-                    widgets.detail_homepage_link.set_visible(true);
-                    widgets.detail_homepage_link.set_label(home);
-                    widgets.detail_homepage_link.set_uri(home);
-                    widgets.detail_homepage_link.set_tooltip_text(Some(home));
+                    set_link_label(&widgets.detail_homepage_link, Some(home));
                 } else {
                     widgets.detail_homepage_row.set_visible(false);
-                    widgets.detail_homepage_link.set_visible(false);
+                    set_link_label(&widgets.detail_homepage_link, None);
                 }
 
                 if let Some(maint) = detail_ref
@@ -593,7 +598,7 @@ impl AppController {
                 }
             } else {
                 widgets.detail_homepage_row.set_visible(false);
-                widgets.detail_homepage_link.set_visible(false);
+                set_link_label(&widgets.detail_homepage_link, None);
                 widgets.detail_maintainer_row.set_visible(false);
                 widgets.detail_maintainer_value.set_visible(false);
                 widgets.detail_license_row.set_visible(false);

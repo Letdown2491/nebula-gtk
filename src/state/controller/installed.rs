@@ -12,7 +12,7 @@ use crate::categories::icon_resource_for_package;
 use crate::details::InstalledDetail;
 use crate::helpers::{
     clear_listbox, format_relative_time, glib_datetime_to_chrono, package_matches_filter,
-    query_installed_detail, sanitize_contact_field,
+    query_installed_detail, sanitize_contact_field, set_link_label,
 };
 use crate::state::controller::AppController;
 use crate::state::types::{AppMessage, InstalledFilter, RemoveOrigin};
@@ -78,7 +78,7 @@ impl AppController {
         self.execute_remove_batch(packages);
     }
 
-    pub(crate) fn on_installed_row_selected(self: &Rc<Self>, row: Option<gtk::ListBoxRow>) {
+    pub(crate) fn on_installed_row_selected(self: &Rc<Self>, position: Option<u32>) {
         let navigation_triggered = {
             let mut state = self.state.borrow_mut();
             let nav = state.installed_detail_navigation_active;
@@ -88,23 +88,25 @@ impl AppController {
 
         {
             let mut state = self.state.borrow_mut();
-            state.selected_installed = row.as_ref().map(|r| r.index() as usize);
+            state.selected_installed = position.map(|idx| idx as usize);
         }
 
         if !navigation_triggered {
             self.clear_installed_detail_history();
         }
 
-        if let Some(pkg) = row.and_then(|r| {
-            let idx = r.index() as usize;
-            let state = self.state.borrow();
-            state
-                .installed_filtered
-                .get(idx)
-                .and_then(|orig| state.installed_packages.get(*orig))
-                .cloned()
-        }) {
-            self.request_installed_detail(&pkg.name);
+        if let Some(idx) = position {
+            let pkg = {
+                let state = self.state.borrow();
+                state
+                    .installed_filtered
+                    .get(idx as usize)
+                    .and_then(|orig| state.installed_packages.get(*orig))
+                    .cloned()
+            };
+            if let Some(pkg) = pkg {
+                self.request_installed_detail(&pkg.name);
+            }
         }
         self.update_installed_details();
     }
@@ -144,7 +146,10 @@ impl AppController {
     }
 
     pub(crate) fn on_installed_detail_close(self: &Rc<Self>) {
-        self.widgets.installed.list.unselect_all();
+        self.widgets
+            .installed
+            .list_selection
+            .set_selected(gtk::INVALID_LIST_POSITION);
         self.clear_installed_detail_history();
         self.clear_installed_detail();
         self.update_installed_detail_back_button();
@@ -479,13 +484,10 @@ impl AppController {
                 {
                     let widgets = &self.widgets.installed;
                     widgets.detail_homepage_row.set_visible(true);
-                    widgets.detail_homepage_link.set_visible(true);
-                    widgets.detail_homepage_link.set_label(home);
-                    widgets.detail_homepage_link.set_uri(home);
-                    widgets.detail_homepage_link.set_tooltip_text(Some(home));
+                    set_link_label(&widgets.detail_homepage_link, Some(home));
                 } else {
                     let widgets = &self.widgets.installed;
-                    widgets.detail_homepage_link.set_visible(false);
+                    set_link_label(&widgets.detail_homepage_link, None);
                     widgets.detail_homepage_row.set_visible(false);
                 }
 
@@ -529,7 +531,7 @@ impl AppController {
                 }
             } else {
                 let widgets = &self.widgets.installed;
-                widgets.detail_homepage_link.set_visible(false);
+                set_link_label(&widgets.detail_homepage_link, None);
                 widgets.detail_homepage_row.set_visible(false);
                 widgets.detail_maintainer_value.set_visible(false);
                 widgets.detail_maintainer_row.set_visible(false);
@@ -587,10 +589,7 @@ impl AppController {
         widgets.detail_version_value.set_text("—");
         widgets.detail_update_label.set_visible(false);
         widgets.detail_update_label.set_text("");
-        widgets.detail_homepage_link.set_visible(false);
-        widgets.detail_homepage_link.set_label("");
-        widgets.detail_homepage_link.set_uri("");
-        widgets.detail_homepage_link.set_tooltip_text(None);
+        set_link_label(&widgets.detail_homepage_link, None);
         widgets.detail_homepage_row.set_visible(false);
         widgets.detail_maintainer_value.set_visible(false);
         widgets.detail_maintainer_value.set_text("");
@@ -606,9 +605,18 @@ impl AppController {
         self.update_installed_required_by_ui(None, false, None);
     }
 
-    fn set_installed_row_buttons_visible(&self, visible: bool) {
-        for button in self.installed_buttons.borrow().iter() {
-            button.set_visible(visible);
+    fn set_installed_row_buttons_visible(self: &Rc<Self>, visible: bool) {
+        let mut refresh = false;
+        {
+            let mut state = self.state.borrow_mut();
+            if state.installed_row_buttons_visible != visible {
+                state.installed_row_buttons_visible = visible;
+                refresh = true;
+            }
+        }
+
+        if refresh {
+            self.refresh_visible_installed_rows();
         }
     }
 
@@ -658,9 +666,13 @@ impl AppController {
                 row.add_suffix(&status_label);
 
                 let package_name = dependent.clone();
-                row.connect_activated(glib::clone!(@strong self as controller => move |_| {
-                    controller.on_installed_required_by_clicked(package_name.clone());
-                }));
+                row.connect_activated(glib::clone!(
+                    #[strong(rename_to = controller)]
+                    self,
+                    move |_| {
+                        controller.on_installed_required_by_clicked(package_name.clone());
+                    }
+                ));
 
                 installed_widgets.detail_required_by_list.append(&row);
             }
@@ -796,11 +808,10 @@ impl AppController {
             state.selected_installed = Some(list_index);
         }
 
-        if let Some(row) = self.widgets.installed.list.row_at_index(list_index as i32) {
-            if row.parent().is_some() {
-                self.widgets.installed.list.select_row(Some(&row));
-            }
-        }
+        self.widgets
+            .installed
+            .list_selection
+            .set_selected(list_index as u32);
 
         self.switch_to_page("installed");
 
@@ -808,18 +819,10 @@ impl AppController {
     }
 
     pub(crate) fn rebuild_installed_list(self: &Rc<Self>) {
-        let list = &self.widgets.installed.list;
-        clear_listbox(list);
-        self.installed_buttons.borrow_mut().clear();
-
-        let status_message;
-        let selected_index;
-
-        {
+        let (matched, status_message, selected_index) = {
             let mut state = self.state.borrow_mut();
             let filter_lower = state.installed_filter.to_lowercase();
             let filter_mode = state.installed_filter_mode;
-            let remove_in_progress = state.remove_in_progress;
             let total_installed = state.installed_packages.len();
 
             let mut matched: Vec<usize> = state
@@ -846,19 +849,10 @@ impl AppController {
                     state.selected_installed = None;
                 }
             }
-            selected_index = state.selected_installed;
-
-            for idx in &matched {
-                let pkg = &state.installed_packages[*idx];
-                let is_selected = state.installed_selected.contains(&pkg.name);
-                let has_update = state.available_update_names.contains(&pkg.name);
-                let row =
-                    self.build_installed_row(pkg, remove_in_progress, is_selected, has_update);
-                list.append(&row);
-            }
+            let selected_index = state.selected_installed;
 
             let filtered_count = matched.len();
-            status_message = if total_installed == 0 {
+            let status_message = if total_installed == 0 {
                 Some("No packages are installed yet. Install something from Discover.".to_string())
             } else if filtered_count == 0 {
                 if filter_mode == InstalledFilter::Updates {
@@ -875,27 +869,50 @@ impl AppController {
                     if filtered_count == 1 { "" } else { "s" }
                 ))
             };
+
+            (matched, status_message, selected_index)
+        };
+
+        let store = &self.widgets.installed.list_store;
+        while store.n_items() > 0 {
+            store.remove(0);
+        }
+        for idx in &matched {
+            let item = glib::BoxedAnyObject::new(*idx);
+            store.append(&item);
         }
 
+        let selection = &self.widgets.installed.list_selection;
         if let Some(selected_idx) = selected_index {
-            if let Some(row) = list.row_at_index(selected_idx as i32) {
-                list.select_row(Some(&row));
-            }
+            selection.set_selected(selected_idx as u32);
+        } else {
+            selection.set_selected(gtk::INVALID_LIST_POSITION);
         }
 
         self.set_installed_status_message(status_message);
-
         self.update_installed_selection_ui();
         self.update_installed_details();
     }
 
-    fn build_installed_row(
-        self: &Rc<Self>,
-        pkg: &PackageInfo,
-        remove_disabled: bool,
-        selected: bool,
-        has_update: bool,
-    ) -> adw::ActionRow {
+    fn build_installed_row_widget(self: &Rc<Self>, package_index: usize) -> adw::ActionRow {
+        let (pkg, remove_disabled, has_update, is_selected, row_buttons_visible) = {
+            let state = self.state.borrow();
+            let Some(pkg) = state.installed_packages.get(package_index).cloned() else {
+                return adw::ActionRow::builder().title("").build();
+            };
+            let remove_disabled = state.remove_in_progress;
+            let has_update = state.available_update_names.contains(&pkg.name);
+            let is_selected = state.installed_selected.contains(&pkg.name);
+            let row_buttons_visible = state.installed_row_buttons_visible;
+            (
+                pkg,
+                remove_disabled,
+                has_update,
+                is_selected,
+                row_buttons_visible,
+            )
+        };
+
         let title = glib::markup_escape_text(&pkg.name);
         let version = glib::markup_escape_text(&pkg.version);
         let description = if pkg.description.is_empty() {
@@ -919,13 +936,17 @@ impl AppController {
             }
         }
 
-        let check_button = gtk::CheckButton::builder().active(selected).build();
+        let weak_self = Rc::downgrade(self);
+
+        let check_button = gtk::CheckButton::builder().active(is_selected).build();
         check_button.set_valign(gtk::Align::Center);
         check_button.set_sensitive(!remove_disabled);
         let package_name = pkg.name.clone();
-        check_button.connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-            controller.on_installed_selection_toggled(package_name.clone(), btn.is_active());
-        }));
+        check_button.connect_toggled(move |btn| {
+            if let Some(controller) = weak_self.upgrade() {
+                controller.on_installed_selection_toggled(package_name.clone(), btn.is_active());
+            }
+        });
 
         let icon = gtk::Image::from_resource(icon_resource_for_package(&pkg.name));
         icon.set_pixel_size(32);
@@ -943,19 +964,17 @@ impl AppController {
         row.add_prefix(&prefix_box);
 
         if has_update {
+            let package_name = pkg.name.clone();
             let update_button = gtk::Button::builder().label("Update").build();
             update_button.add_css_class("suggested-action");
             update_button.set_valign(gtk::Align::Center);
-            let package_name = pkg.name.clone();
+            update_button.set_visible(row_buttons_visible);
             let weak_self = Rc::downgrade(self);
             update_button.connect_clicked(move |_| {
                 if let Some(controller) = weak_self.upgrade() {
                     controller.start_update(package_name.clone(), false);
                 }
             });
-            self.installed_buttons
-                .borrow_mut()
-                .push(update_button.clone());
             row.add_suffix(&update_button);
         }
 
@@ -963,6 +982,7 @@ impl AppController {
         remove_button.add_css_class("destructive-action");
         remove_button.set_sensitive(!remove_disabled);
         remove_button.set_valign(gtk::Align::Center);
+        remove_button.set_visible(row_buttons_visible);
 
         let package_name = pkg.name.clone();
         let weak_self = Rc::downgrade(self);
@@ -972,11 +992,34 @@ impl AppController {
             }
         });
 
-        self.installed_buttons
-            .borrow_mut()
-            .push(remove_button.clone());
         row.add_suffix(&remove_button);
 
         row
+    }
+
+    pub(crate) fn bind_installed_list_item(self: &Rc<Self>, list_item: &gtk::ListItem) {
+        let Some(item) = list_item.item() else {
+            list_item.set_child(None::<&gtk::Widget>);
+            return;
+        };
+        let Ok(boxed) = item.downcast::<glib::BoxedAnyObject>() else {
+            list_item.set_child(None::<&gtk::Widget>);
+            return;
+        };
+        let index = *boxed.borrow::<usize>();
+        let row = self.build_installed_row_widget(index);
+        list_item.set_child(Some(&row));
+    }
+
+    fn refresh_visible_installed_rows(self: &Rc<Self>) {
+        let observer = self.widgets.installed.list_view.observe_children();
+        let count = observer.n_items();
+        for i in 0..count {
+            if let Some(obj) = observer.item(i) {
+                if let Ok(list_item) = obj.downcast::<gtk::ListItem>() {
+                    self.bind_installed_list_item(&list_item);
+                }
+            }
+        }
     }
 }

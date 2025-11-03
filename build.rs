@@ -62,7 +62,7 @@ fn generate_category_map() {
                     if !seen.insert(key.clone()) {
                         continue;
                     }
-                    map_builder.entry(key, &format!("{:?}", category));
+                    map_builder.entry(key, format!("{category:?}"));
                 }
             }
             Err(err) => {

@@ -14,7 +14,8 @@ use crate::categories::icon_resource_for_package;
 use crate::details::DiscoverDetail;
 use crate::helpers::{
     clear_listbox, detail_download_bytes, format_relative_time, populate_spotlight_list,
-    sanitize_contact_field, set_download_label, set_toggle_button_state,
+    sanitize_contact_field, select_row_if_attached, set_download_label, set_link_label,
+    set_toggle_button_state,
 };
 use crate::spotlight::{
     SPOTLIGHT_REFRESH_INTERVAL_HOURS, SpotlightCache, SpotlightCategory, category_display_name,
@@ -354,9 +355,7 @@ impl AppController {
         }
 
         if let Some(row) = self.widgets.discover.list.row_at_index(idx as i32) {
-            if row.parent().is_some() {
-                self.widgets.discover.list.select_row(Some(&row));
-            }
+            select_row_if_attached(&self.widgets.discover.list, &row);
         } else {
             self.update_discover_details();
         }
@@ -428,6 +427,7 @@ impl AppController {
         }
 
         self.update_discover_details();
+        self.update_spotlight_recent_detail();
         self.request_discover_detail(&package);
         self.update_discover_detail_back_button();
     }
@@ -488,7 +488,7 @@ impl AppController {
 
         if let Some(idx) = selected_idx {
             if let Some(row) = list.row_at_index(idx as i32) {
-                list.select_row(Some(&row));
+                select_row_if_attached(list, &row);
             }
         } else if let Some(target) = pending_target {
             let _ = self.focus_discover_package(&target, navigation_active);
@@ -678,7 +678,7 @@ impl AppController {
                 update_label.set_visible(false);
                 update_label.set_text("");
                 homepage_row.set_visible(false);
-                homepage_link.set_visible(false);
+                set_link_label(homepage_link, None);
                 maintainer_row.set_visible(false);
                 maintainer_value.set_visible(false);
                 license_row.set_visible(false);
@@ -700,7 +700,7 @@ impl AppController {
                 update_label.set_visible(false);
                 update_label.set_text("");
                 homepage_row.set_visible(false);
-                homepage_link.set_visible(false);
+                set_link_label(homepage_link, None);
                 maintainer_row.set_visible(false);
                 maintainer_value.set_visible(false);
                 license_row.set_visible(false);
@@ -735,23 +735,17 @@ impl AppController {
                     pkg.download_size.as_deref(),
                 );
 
-                if let Some(detail) = detail {
-                    if let Some(homepage) = detail.homepage {
+                if let Some(detail) = detail.as_ref() {
+                    if let Some(homepage) = detail.homepage.as_deref() {
                         homepage_row.set_visible(true);
-                        homepage_link.set_visible(true);
-                        homepage_link.set_uri(&homepage);
-                        homepage_link.set_label(&homepage);
-                        homepage_link.set_tooltip_text(Some(&homepage));
+                        set_link_label(homepage_link, Some(homepage));
                     } else {
                         homepage_row.set_visible(false);
-                        homepage_link.set_visible(false);
-                        homepage_link.set_label("");
-                        homepage_link.set_uri("");
-                        homepage_link.set_tooltip_text(None);
+                        set_link_label(homepage_link, None);
                     }
 
-                    if let Some(maintainer) = detail.maintainer {
-                        let friendly = sanitize_contact_field(&maintainer);
+                    if let Some(maintainer) = detail.maintainer.as_deref() {
+                        let friendly = sanitize_contact_field(maintainer);
                         if friendly.is_empty() {
                             maintainer_row.set_visible(false);
                             maintainer_value.set_visible(false);
@@ -767,7 +761,7 @@ impl AppController {
                         maintainer_value.set_text("");
                     }
 
-                    if let Some(license) = detail.license {
+                    if let Some(license) = detail.license.as_deref() {
                         license_row.set_visible(true);
                         license_value.set_visible(true);
                         license_value.set_text(&license);
@@ -824,11 +818,13 @@ impl AppController {
                             row.add_suffix(&status_label);
 
                             let package_name = dependency.name.clone();
-                            row.connect_activated(
-                                glib::clone!(@strong self as controller => move |_| {
+                            row.connect_activated(glib::clone!(
+                                #[strong(rename_to = controller)]
+                                self,
+                                move |_| {
                                     controller.on_discover_dependency_clicked(package_name.clone());
-                                }),
-                            );
+                                }
+                            ));
 
                             dependencies_list.append(&row);
                         }
@@ -847,10 +843,7 @@ impl AppController {
                     }
                 } else {
                     homepage_row.set_visible(false);
-                    homepage_link.set_visible(false);
-                    homepage_link.set_label("");
-                    homepage_link.set_uri("");
-                    homepage_link.set_tooltip_text(None);
+                    set_link_label(homepage_link, None);
                     maintainer_row.set_visible(false);
                     maintainer_value.set_visible(false);
                     maintainer_value.set_text("");
@@ -890,10 +883,7 @@ impl AppController {
         update_label.set_visible(false);
         update_label.set_text("");
         homepage_row.set_visible(false);
-        homepage_link.set_visible(false);
-        homepage_link.set_label("");
-        homepage_link.set_uri("");
-        homepage_link.set_tooltip_text(None);
+        set_link_label(homepage_link, None);
         maintainer_row.set_visible(false);
         maintainer_value.set_visible(false);
         maintainer_value.set_text("");
@@ -1411,6 +1401,18 @@ impl AppController {
                 .set_can_target(true);
             self.widgets
                 .discover
+                .spotlight_recent_detail_revealer
+                .set_visible(true);
+            self.widgets
+                .discover
+                .spotlight_recent_close_button
+                .set_visible(true);
+            self.widgets
+                .discover
+                .spotlight_recent_close_button
+                .set_sensitive(true);
+            self.widgets
+                .discover
                 .spotlight_recent_detail_container
                 .set_visible(true);
             self.update_discover_details();
@@ -1420,7 +1422,7 @@ impl AppController {
         self.on_search_requested();
     }
 
-    pub(crate) fn on_spotlight_recent_back(self: &Rc<Self>) {
+    pub(crate) fn on_spotlight_recent_close(self: &Rc<Self>) {
         self.clear_spotlight_recent_selection();
     }
 
@@ -1451,6 +1453,18 @@ impl AppController {
             .discover
             .spotlight_recent_detail_revealer
             .set_can_target(false);
+        self.widgets
+            .discover
+            .spotlight_recent_detail_revealer
+            .set_visible(false);
+        self.widgets
+            .discover
+            .spotlight_recent_close_button
+            .set_visible(false);
+        self.widgets
+            .discover
+            .spotlight_recent_close_button
+            .set_sensitive(false);
         self.widgets
             .discover
             .spotlight_recent_detail_container
@@ -1535,6 +1549,18 @@ impl AppController {
                 .set_can_target(true);
             self.widgets
                 .discover
+                .spotlight_recent_detail_revealer
+                .set_visible(true);
+            self.widgets
+                .discover
+                .spotlight_recent_close_button
+                .set_visible(true);
+            self.widgets
+                .discover
+                .spotlight_recent_close_button
+                .set_sensitive(true);
+            self.widgets
+                .discover
                 .spotlight_recent_detail_container
                 .set_visible(true);
             self.update_spotlight_recent_detail();
@@ -1555,6 +1581,18 @@ impl AppController {
                 .discover
                 .spotlight_recent_detail_revealer
                 .set_can_target(false);
+            self.widgets
+                .discover
+                .spotlight_recent_detail_revealer
+                .set_visible(false);
+            self.widgets
+                .discover
+                .spotlight_recent_close_button
+                .set_visible(false);
+            self.widgets
+                .discover
+                .spotlight_recent_close_button
+                .set_sensitive(false);
             self.widgets
                 .discover
                 .spotlight_recent_detail_container
@@ -1578,38 +1616,56 @@ impl AppController {
                 .set_can_target(false);
             self.widgets
                 .discover
+                .spotlight_recent_detail_revealer
+                .set_visible(false);
+            self.widgets
+                .discover
+                .spotlight_recent_close_button
+                .set_visible(false);
+            self.widgets
+                .discover
+                .spotlight_recent_close_button
+                .set_sensitive(false);
+            self.widgets
+                .discover
                 .spotlight_recent_detail_container
                 .set_visible(false);
         }
     }
 
     pub(crate) fn update_spotlight_recent_detail(self: &Rc<Self>) {
-        let (pkg, detail, loading, error, install_in_progress, remove_in_progress) = {
+        let (
+            selected_recent,
+            focus_pkg,
+            detail,
+            loading,
+            error,
+            install_in_progress,
+            remove_in_progress,
+            navigation_active,
+            has_history,
+        ) = {
             let state = self.state.borrow();
-            let selected = state.spotlight_recent_selected.clone();
-            let pkg = selected.as_ref().and_then(|name| {
-                state
-                    .spotlight_recent
-                    .iter()
-                    .find(|pkg| &pkg.name == name)
-                    .cloned()
+            let focus = state.discover_detail_focus.clone();
+            let detail = focus
+                .as_ref()
+                .and_then(|pkg| state.discover_detail_cache.get(&pkg.name).cloned());
+            let loading = focus.as_ref().map_or(false, |pkg| {
+                state.discover_detail_loading.contains(&pkg.name)
             });
-            let detail = selected
+            let error = focus
                 .as_ref()
-                .and_then(|name| state.discover_detail_cache.get(name).cloned());
-            let loading = selected
-                .as_ref()
-                .map_or(false, |name| state.discover_detail_loading.contains(name));
-            let error = selected
-                .as_ref()
-                .and_then(|name| state.discover_detail_errors.get(name).cloned());
+                .and_then(|pkg| state.discover_detail_errors.get(&pkg.name).cloned());
             (
-                pkg,
+                state.spotlight_recent_selected.clone(),
+                focus,
                 detail,
                 loading,
                 error,
                 state.install_in_progress,
                 state.remove_in_progress,
+                state.discover_detail_navigation_active,
+                !state.discover_detail_history.is_empty(),
             )
         };
 
@@ -1634,8 +1690,10 @@ impl AppController {
         let dependencies_placeholder = &widgets.spotlight_recent_detail_dependencies_placeholder;
         let action_button = &widgets.spotlight_recent_action_button;
 
-        if let Some(pkg) = pkg {
-            back_button.set_visible(true);
+        if let (Some(_), Some(pkg)) = (&selected_recent, &focus_pkg) {
+            let show_back = navigation_active && has_history;
+            back_button.set_visible(show_back);
+            back_button.set_sensitive(show_back);
             widgets.spotlight_recent_detail_container.set_visible(true);
             widgets.spotlight_recent_detail_name.set_text(&pkg.name);
 
@@ -1688,16 +1746,10 @@ impl AppController {
             if let Some(detail) = detail.clone() {
                 if let Some(homepage) = detail.homepage {
                     homepage_row.set_visible(true);
-                    homepage_link.set_visible(true);
-                    homepage_link.set_uri(&homepage);
-                    homepage_link.set_label(&homepage);
-                    homepage_link.set_tooltip_text(Some(&homepage));
+                    set_link_label(homepage_link, Some(homepage.as_str()));
                 } else {
                     homepage_row.set_visible(false);
-                    homepage_link.set_visible(false);
-                    homepage_link.set_label("");
-                    homepage_link.set_uri("");
-                    homepage_link.set_tooltip_text(None);
+                    set_link_label(homepage_link, None);
                 }
 
                 if let Some(maintainer) = detail.maintainer {
@@ -1786,11 +1838,13 @@ impl AppController {
                         row.add_suffix(&status_label);
 
                         let package_name = dependency.name.clone();
-                        row.connect_activated(
-                            glib::clone!(@strong self as controller => move |_| {
+                        row.connect_activated(glib::clone!(
+                            #[strong(rename_to = controller)]
+                            self,
+                            move |_| {
                                 controller.on_discover_dependency_clicked(package_name.clone());
-                            }),
-                        );
+                            }
+                        ));
 
                         dependencies_list.append(&row);
                     }
@@ -1799,10 +1853,7 @@ impl AppController {
                 }
             } else if loading {
                 homepage_row.set_visible(false);
-                homepage_link.set_visible(false);
-                homepage_link.set_label("");
-                homepage_link.set_uri("");
-                homepage_link.set_tooltip_text(None);
+                set_link_label(homepage_link, None);
                 maintainer_row.set_visible(false);
                 maintainer_value.set_visible(false);
                 maintainer_value.set_text("");
@@ -1813,7 +1864,7 @@ impl AppController {
                 updated_value.set_visible(false);
                 updated_value.set_text("");
                 update_label.set_visible(false);
-                let fallback_bytes = pkg.download_bytes.or(detail_download_bytes(&pkg.name));
+                let fallback_bytes = pkg.download_bytes.or_else(|| detail_download_bytes(&pkg.name));
                 set_download_label(
                     download_value,
                     None,
@@ -1828,10 +1879,7 @@ impl AppController {
                 description_label.set_text("Loading package details…");
             } else if let Some(err) = error.clone() {
                 homepage_row.set_visible(false);
-                homepage_link.set_visible(false);
-                homepage_link.set_label("");
-                homepage_link.set_uri("");
-                homepage_link.set_tooltip_text(None);
+                set_link_label(homepage_link, None);
                 maintainer_row.set_visible(false);
                 maintainer_value.set_visible(false);
                 maintainer_value.set_text("");
@@ -1842,7 +1890,7 @@ impl AppController {
                 updated_value.set_visible(false);
                 updated_value.set_text("");
                 update_label.set_visible(false);
-                let fallback_bytes = pkg.download_bytes.or(detail_download_bytes(&pkg.name));
+                let fallback_bytes = pkg.download_bytes.or_else(|| detail_download_bytes(&pkg.name));
                 set_download_label(
                     download_value,
                     None,
@@ -1857,10 +1905,7 @@ impl AppController {
                 description_label.set_text(&format!("Could not load package details: {}", err));
             } else {
                 homepage_row.set_visible(false);
-                homepage_link.set_visible(false);
-                homepage_link.set_label("");
-                homepage_link.set_uri("");
-                homepage_link.set_tooltip_text(None);
+                set_link_label(homepage_link, None);
                 maintainer_row.set_visible(false);
                 maintainer_value.set_visible(false);
                 maintainer_value.set_text("");
@@ -1871,7 +1916,7 @@ impl AppController {
                 updated_value.set_visible(false);
                 updated_value.set_text("");
                 update_label.set_visible(false);
-                let fallback_bytes = pkg.download_bytes.or(detail_download_bytes(&pkg.name));
+                let fallback_bytes = pkg.download_bytes.or_else(|| detail_download_bytes(&pkg.name));
                 set_download_label(
                     download_value,
                     None,
@@ -1888,6 +1933,7 @@ impl AppController {
             }
         } else {
             back_button.set_visible(false);
+            back_button.set_sensitive(false);
             widgets.spotlight_recent_detail_container.set_visible(false);
             spinner.stop();
             spinner.set_visible(false);
@@ -1899,10 +1945,7 @@ impl AppController {
             version_value.set_text("—");
             download_value.set_text("—");
             homepage_row.set_visible(false);
-            homepage_link.set_visible(false);
-            homepage_link.set_label("");
-            homepage_link.set_uri("");
-            homepage_link.set_tooltip_text(None);
+            set_link_label(homepage_link, None);
             maintainer_row.set_visible(false);
             maintainer_value.set_visible(false);
             maintainer_value.set_text("");

@@ -56,7 +56,7 @@ pub(crate) struct DiscoverWidgets {
     pub(crate) detail_description: gtk::Label,
     pub(crate) detail_download_value: gtk::Label,
     pub(crate) detail_homepage_row: gtk::Box,
-    pub(crate) detail_homepage_link: gtk::LinkButton,
+    pub(crate) detail_homepage_link: gtk::Label,
     pub(crate) detail_maintainer_row: gtk::Box,
     pub(crate) detail_maintainer_value: gtk::Label,
     pub(crate) detail_license_row: gtk::Box,
@@ -75,6 +75,7 @@ pub(crate) struct DiscoverWidgets {
     pub(crate) spotlight_recent_detail_revealer: gtk::Revealer,
     pub(crate) spotlight_recent_detail_container: gtk::Box,
     pub(crate) spotlight_recent_back_button: gtk::Button,
+    pub(crate) spotlight_recent_close_button: gtk::Button,
     pub(crate) spotlight_recent_detail_name: gtk::Label,
     pub(crate) spotlight_recent_detail_spinner: gtk::Spinner,
     pub(crate) spotlight_recent_detail_version_value: gtk::Label,
@@ -82,7 +83,7 @@ pub(crate) struct DiscoverWidgets {
     pub(crate) spotlight_recent_detail_updated_row: gtk::Box,
     pub(crate) spotlight_recent_detail_updated_value: gtk::Label,
     pub(crate) spotlight_recent_detail_homepage_row: gtk::Box,
-    pub(crate) spotlight_recent_detail_homepage_link: gtk::LinkButton,
+    pub(crate) spotlight_recent_detail_homepage_link: gtk::Label,
     pub(crate) spotlight_recent_detail_maintainer_row: gtk::Box,
     pub(crate) spotlight_recent_detail_maintainer_value: gtk::Label,
     pub(crate) spotlight_recent_detail_license_row: gtk::Box,
@@ -247,11 +248,6 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     spotlight_recent_scroller.set_vexpand(true);
     spotlight_recent_scroller.set_child(Some(&spotlight_recent_list));
 
-    let spotlight_recent_overlay = gtk::Overlay::new();
-    spotlight_recent_overlay.set_child(Some(&spotlight_recent_scroller));
-    spotlight_recent_overlay.set_hexpand(true);
-    spotlight_recent_overlay.set_vexpand(true);
-
     let spotlight_recent_placeholder = adw::StatusPage::builder()
         .title("Nothing updated recently")
         .description("Packages updated in the past 7 days will appear here.")
@@ -262,9 +258,8 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .build();
     spotlight_recent_stack.set_vexpand(true);
     spotlight_recent_stack.add_named(&spotlight_recent_placeholder, Some("placeholder"));
-    spotlight_recent_stack.add_named(&spotlight_recent_overlay, Some("list"));
     let recent_detail_back_button = gtk::Button::builder()
-        .icon_name("window-close-symbolic")
+        .icon_name("go-previous-symbolic")
         .has_frame(false)
         .tooltip_text("Back to recently updated")
         .visible(false)
@@ -293,6 +288,17 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     recent_detail_spinner.set_visible(false);
     recent_detail_spinner.set_valign(gtk::Align::Center);
 
+    let recent_detail_close_button = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .has_frame(false)
+        .tooltip_text("Close details")
+        .visible(false)
+        .sensitive(false)
+        .build();
+    recent_detail_close_button.add_css_class("flat");
+    recent_detail_close_button.set_focus_on_click(false);
+    recent_detail_close_button.set_valign(gtk::Align::Center);
+
     let recent_detail_header = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
@@ -307,6 +313,7 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .build();
     recent_detail_header.append(&recent_detail_header_spacer);
     recent_detail_header.append(&recent_detail_spinner);
+    recent_detail_header.append(&recent_detail_close_button);
 
     let make_recent_metadata_label = |text: &str| {
         let label = gtk::Label::builder()
@@ -410,19 +417,16 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .visible(false)
         .build();
     let recent_detail_homepage_title = make_recent_metadata_label("Homepage");
-    let recent_detail_homepage_link = gtk::LinkButton::builder()
-        .label("")
-        .has_frame(false)
+    let recent_detail_homepage_link = gtk::Label::builder()
+        .use_markup(true)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
         .visible(false)
         .build();
-    recent_detail_homepage_link.add_css_class("flat");
-    recent_detail_homepage_link.set_margin_top(0);
-    recent_detail_homepage_link.set_margin_bottom(0);
-    recent_detail_homepage_link.set_margin_start(0);
-    recent_detail_homepage_link.set_margin_end(0);
-    recent_detail_homepage_link.set_valign(gtk::Align::Center);
     recent_detail_homepage_link.set_halign(gtk::Align::Start);
     recent_detail_homepage_link.set_hexpand(true);
+    recent_detail_homepage_link.set_xalign(0.0);
+    recent_detail_homepage_link.set_selectable(false);
     recent_detail_homepage_row.append(&recent_detail_homepage_title);
     recent_detail_homepage_row.append(&recent_detail_homepage_link);
     recent_detail_metadata_box.append(&recent_detail_homepage_row);
@@ -526,13 +530,13 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .orientation(gtk::Orientation::Vertical)
         .spacing(6)
         .hexpand(true)
-        .margin_top(0)
-        .margin_bottom(0)
-        .margin_start(0)
-        .margin_end(0)
+        .margin_top(10)
+        .margin_bottom(10)
+        .margin_start(10)
+        .margin_end(16)
         .build();
-    recent_detail_box.add_css_class("background");
     recent_detail_box.add_css_class("nebula-card");
+    recent_detail_box.add_css_class("compact");
     recent_detail_box.append(&recent_detail_header);
     recent_detail_box.append(&recent_detail_status);
     recent_detail_box.append(&recent_detail_metadata_box);
@@ -569,7 +573,17 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     recent_detail_revealer.set_vexpand(true);
     recent_detail_revealer.set_child(Some(&recent_detail_scroller));
     recent_detail_revealer.set_can_target(false);
-    spotlight_recent_overlay.add_overlay(&recent_detail_revealer);
+    recent_detail_revealer.set_visible(false);
+    let spotlight_recent_split = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(12)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    spotlight_recent_split.set_homogeneous(true);
+    spotlight_recent_split.append(&spotlight_recent_scroller);
+    spotlight_recent_split.append(&recent_detail_revealer);
+    spotlight_recent_stack.add_named(&spotlight_recent_split, Some("list"));
     spotlight_recent_stack.set_visible_child_name("placeholder");
 
     let recent_heading = gtk::Label::builder()
@@ -793,19 +807,16 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     detail_maintainer_row.append(&detail_maintainer_value);
     detail_metadata_box.append(&detail_maintainer_row);
 
-    let detail_homepage_link = gtk::LinkButton::builder()
-        .label("")
+    let detail_homepage_link = gtk::Label::builder()
+        .use_markup(true)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
         .halign(gtk::Align::Start)
-        .has_frame(false)
         .visible(false)
         .build();
-    detail_homepage_link.add_css_class("flat");
-    detail_homepage_link.set_margin_top(0);
-    detail_homepage_link.set_margin_bottom(0);
-    detail_homepage_link.set_margin_start(0);
-    detail_homepage_link.set_margin_end(0);
-    detail_homepage_link.set_valign(gtk::Align::Center);
     detail_homepage_link.set_hexpand(true);
+    detail_homepage_link.set_xalign(0.0);
+    detail_homepage_link.set_selectable(false);
     let detail_homepage_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
@@ -996,6 +1007,7 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         spotlight_recent_detail_revealer: recent_detail_revealer.clone(),
         spotlight_recent_detail_container: recent_detail_box.clone(),
         spotlight_recent_back_button: recent_detail_back_button.clone(),
+        spotlight_recent_close_button: recent_detail_close_button.clone(),
         spotlight_recent_detail_name: recent_detail_name.clone(),
         spotlight_recent_detail_spinner: recent_detail_spinner.clone(),
         spotlight_recent_detail_version_value: recent_detail_version_value.clone(),

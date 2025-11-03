@@ -33,7 +33,6 @@ pub(crate) struct AppController {
     pub(crate) window: adw::ApplicationWindow,
     pub(crate) settings: Rc<RefCell<AppSettings>>,
     pub(crate) update_buttons: RefCell<Vec<gtk::Button>>,
-    pub(crate) installed_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) discover_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) preferences_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) mirrors_window: RefCell<Option<adw::PreferencesWindow>>,
@@ -67,6 +66,7 @@ impl AppController {
             state.start_page_preference = settings_ref.start_page;
             state.notify_updates = settings_ref.notify_updates;
         }
+        state.installed_row_buttons_visible = true;
 
         Self {
             widgets,
@@ -76,7 +76,6 @@ impl AppController {
             window,
             settings,
             update_buttons: RefCell::new(Vec::new()),
-            installed_buttons: RefCell::new(Vec::new()),
             discover_buttons: RefCell::new(Vec::new()),
             preferences_window: RefCell::new(None),
             mirrors_window: RefCell::new(None),
@@ -85,226 +84,426 @@ impl AppController {
     }
 
     pub(crate) fn setup_connections(self: &Rc<Self>) {
-        self.widgets.discover.search_entry.connect_search_changed(
-            glib::clone!(@strong self as controller => move |entry| {
-                controller.on_discover_search_changed(entry.text().to_string());
-            }),
-        );
+        self.widgets
+            .discover
+            .search_entry
+            .connect_search_changed(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |entry| {
+                    controller.on_discover_search_changed(entry.text().to_string());
+                }
+            ));
 
-        self.widgets.discover.search_entry.connect_activate(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_search_requested();
-            }),
-        );
+        self.widgets
+            .installed
+            .list_factory
+            .connect_bind(glib::clone!(
+                #[weak(rename_to = controller)]
+                self,
+                move |_, list_item| {
+                    controller.bind_installed_list_item(list_item);
+                }
+            ));
+        self.widgets
+            .installed
+            .list_factory
+            .connect_unbind(|_, list_item| {
+                list_item.set_child(None::<&gtk::Widget>);
+            });
 
-        self.widgets.discover.list.connect_row_selected(
-            glib::clone!(@strong self as controller => move |_, row| {
-                controller.on_search_row_selected(row.cloned());
-            }),
-        );
-        self.widgets.discover.list.connect_row_activated(
-            glib::clone!(@strong self as controller => move |_, _| {
-                controller.on_discover_primary_action();
-            }),
-        );
-        self.widgets.discover.detail_action_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_discover_primary_action();
-            }),
-        );
-        self.widgets.discover.detail_back_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_discover_detail_back();
-            }),
-        );
-        self.widgets.discover.detail_close_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_discover_detail_close();
-            }),
-        );
+        self.widgets
+            .installed
+            .list_selection
+            .connect_selected_notify(glib::clone!(
+                #[weak(rename_to = controller)]
+                self,
+                move |selection| {
+                    let position = selection.selected();
+                    if position == gtk::INVALID_LIST_POSITION {
+                        controller.on_installed_row_selected(None);
+                    } else {
+                        controller.on_installed_row_selected(Some(position));
+                    }
+                }
+            ));
+
+        self.widgets
+            .discover
+            .search_entry
+            .connect_activate(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_search_requested();
+                }
+            ));
+
+        self.widgets
+            .discover
+            .list
+            .connect_row_selected(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_, row| {
+                    controller.on_search_row_selected(row.cloned());
+                }
+            ));
+        self.widgets
+            .discover
+            .list
+            .connect_row_activated(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_, _| {
+                    controller.on_discover_primary_action();
+                }
+            ));
+        self.widgets
+            .discover
+            .detail_action_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_discover_primary_action();
+                }
+            ));
+        self.widgets
+            .discover
+            .detail_back_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_discover_detail_back();
+                }
+            ));
+        self.widgets
+            .discover
+            .detail_close_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_discover_detail_close();
+                }
+            ));
         self.widgets
             .discover
             .spotlight_recent_list
-            .connect_row_selected(glib::clone!(@strong self as controller => move |_, row| {
-                controller.on_spotlight_recent_selected(row.cloned());
-            }));
+            .connect_row_selected(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_, row| {
+                    controller.on_spotlight_recent_selected(row.cloned());
+                }
+            ));
         self.widgets
             .discover
             .spotlight_recent_list
-            .connect_row_activated(glib::clone!(@strong self as controller => move |_, row| {
-                controller.on_spotlight_row_activated(row);
-            }));
+            .connect_row_activated(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_, row| {
+                    controller.on_spotlight_row_activated(row);
+                }
+            ));
         self.widgets
             .discover
             .spotlight_recent_back_button
-            .connect_clicked(glib::clone!(@strong self as controller => move |_| {
-                controller.on_spotlight_recent_back();
-            }));
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_discover_detail_back();
+                }
+            ));
+        self.widgets
+            .discover
+            .spotlight_recent_close_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_spotlight_recent_close();
+                }
+            ));
         self.widgets
             .discover
             .spotlight_recent_action_button
-            .connect_clicked(glib::clone!(@strong self as controller => move |_| {
-                controller.on_discover_primary_action();
-            }));
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_discover_primary_action();
+                }
+            ));
         self.widgets
             .discover
             .category_browsers_button
-            .connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(
-                    SpotlightCategory::Browsers,
-                    btn.is_active(),
-                );
-            }));
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller.handle_spotlight_category_toggle(
+                        SpotlightCategory::Browsers,
+                        btn.is_active(),
+                    );
+                }
+            ));
         self.widgets
             .discover
             .category_chat_button
-            .connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(SpotlightCategory::Chat, btn.is_active());
-            }));
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller
+                        .handle_spotlight_category_toggle(SpotlightCategory::Chat, btn.is_active());
+                }
+            ));
         self.widgets
             .discover
             .category_games_button
-            .connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(SpotlightCategory::Games, btn.is_active());
-            }));
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller.handle_spotlight_category_toggle(
+                        SpotlightCategory::Games,
+                        btn.is_active(),
+                    );
+                }
+            ));
         self.widgets
             .discover
             .category_graphics_button
-            .connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(
-                    SpotlightCategory::Graphics,
-                    btn.is_active(),
-                );
-            }));
-        self.widgets.discover.category_email_button.connect_toggled(
-            glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(
-                    SpotlightCategory::Email,
-                    btn.is_active(),
-                );
-            }),
-        );
-        self.widgets.discover.category_music_button.connect_toggled(
-            glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(
-                    SpotlightCategory::Music,
-                    btn.is_active(),
-                );
-            }),
-        );
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller.handle_spotlight_category_toggle(
+                        SpotlightCategory::Graphics,
+                        btn.is_active(),
+                    );
+                }
+            ));
+        self.widgets
+            .discover
+            .category_email_button
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller.handle_spotlight_category_toggle(
+                        SpotlightCategory::Email,
+                        btn.is_active(),
+                    );
+                }
+            ));
+        self.widgets
+            .discover
+            .category_music_button
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller.handle_spotlight_category_toggle(
+                        SpotlightCategory::Music,
+                        btn.is_active(),
+                    );
+                }
+            ));
         self.widgets
             .discover
             .category_productivity_button
-            .connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(
-                    SpotlightCategory::Productivity,
-                    btn.is_active(),
-                );
-            }));
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller.handle_spotlight_category_toggle(
+                        SpotlightCategory::Productivity,
+                        btn.is_active(),
+                    );
+                }
+            ));
         self.widgets
             .discover
             .category_utilities_button
-            .connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(
-                    SpotlightCategory::Utilities,
-                    btn.is_active(),
-                );
-            }));
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller.handle_spotlight_category_toggle(
+                        SpotlightCategory::Utilities,
+                        btn.is_active(),
+                    );
+                }
+            ));
         self.widgets
             .discover
             .category_video_button
-            .connect_toggled(glib::clone!(@strong self as controller => move |btn| {
-                controller.handle_spotlight_category_toggle(SpotlightCategory::Video, btn.is_active());
-            }));
+            .connect_toggled(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |btn| {
+                    controller.handle_spotlight_category_toggle(
+                        SpotlightCategory::Video,
+                        btn.is_active(),
+                    );
+                }
+            ));
 
         self.widgets
             .discover
             .spotlight_refresh_button
-            .connect_clicked(glib::clone!(@strong self as controller => move |_| {
-                controller.maybe_refresh_spotlight(true);
-            }));
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.maybe_refresh_spotlight(true);
+                }
+            ));
 
-        self.widgets.installed.refresh_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.refresh_installed_packages();
-            }),
-        );
+        self.widgets
+            .installed
+            .refresh_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.refresh_installed_packages();
+                }
+            ));
 
-        self.widgets.installed.search_entry.connect_search_changed(
-            glib::clone!(@strong self as controller => move |entry| {
-                controller.on_installed_search_changed(entry.text().to_string());
-            }),
-        );
+        self.widgets
+            .installed
+            .search_entry
+            .connect_search_changed(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |entry| {
+                    controller.on_installed_search_changed(entry.text().to_string());
+                }
+            ));
 
-        self.widgets.installed.search_entry.connect_activate(
-            glib::clone!(@strong self as controller => move |entry| {
-                controller.on_installed_search_changed(entry.text().to_string());
-            }),
-        );
+        self.widgets
+            .installed
+            .search_entry
+            .connect_activate(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |entry| {
+                    controller.on_installed_search_changed(entry.text().to_string());
+                }
+            ));
 
-        self.widgets.tools.cleanup_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_cleanup_requested();
-            }),
-        );
-        self.widgets.tools.pkgdb_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_pkgdb_requested();
-            }),
-        );
-        self.widgets.tools.reconfigure_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_reconfigure_requested();
-            }),
-        );
-        self.widgets.tools.alternatives_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_alternatives_requested();
-            }),
-        );
+        self.widgets
+            .tools
+            .cleanup_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_cleanup_requested();
+                }
+            ));
+        self.widgets
+            .tools
+            .pkgdb_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_pkgdb_requested();
+                }
+            ));
+        self.widgets
+            .tools
+            .reconfigure_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_reconfigure_requested();
+                }
+            ));
+        self.widgets
+            .tools
+            .alternatives_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_alternatives_requested();
+                }
+            ));
 
         self.widgets
             .installed
             .filter_dropdown
-            .connect_selected_notify(glib::clone!(@strong self as controller => move |dropdown| {
-                controller.on_installed_filter_changed(dropdown.selected());
-            }));
-
-        self.widgets.installed.list.connect_row_selected(
-            glib::clone!(@strong self as controller => move |_, row| {
-                controller.on_installed_row_selected(row.cloned());
-            }),
-        );
+            .connect_selected_notify(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |dropdown| {
+                    controller.on_installed_filter_changed(dropdown.selected());
+                }
+            ));
 
         self.widgets
             .installed
             .remove_selected_button
-            .connect_clicked(glib::clone!(@strong self as controller => move |_| {
-                controller.on_installed_remove_selected();
-            }));
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_installed_remove_selected();
+                }
+            ));
 
-        self.widgets.installed.detail_back_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_installed_detail_back();
-            }),
-        );
-        self.widgets.installed.detail_close_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_installed_detail_close();
-            }),
-        );
+        self.widgets
+            .installed
+            .detail_back_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_installed_detail_back();
+                }
+            ));
+        self.widgets
+            .installed
+            .detail_close_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_installed_detail_close();
+                }
+            ));
 
-        self.widgets.installed.detail_remove_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_installed_detail_remove();
-            }),
-        );
+        self.widgets
+            .installed
+            .detail_remove_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_installed_detail_remove();
+                }
+            ));
 
-        self.widgets.installed.detail_update_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_installed_detail_update();
-            }),
-        );
+        self.widgets
+            .installed
+            .detail_update_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_installed_detail_update();
+                }
+            ));
 
         {
             let state = self.state.borrow();
@@ -322,44 +521,76 @@ impl AppController {
         self.update_installed_selection_ui();
         self.update_installed_details();
 
-        self.widgets.updates.check_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.refresh_updates(false);
-            }),
-        );
-        self.widgets.updates.refresh_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.refresh_updates(false);
-            }),
-        );
+        self.widgets
+            .updates
+            .check_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.refresh_updates(false);
+                }
+            ));
+        self.widgets
+            .updates
+            .refresh_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.refresh_updates(false);
+                }
+            ));
 
-        self.widgets.updates.update_all_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.update_all_packages();
-            }),
-        );
+        self.widgets
+            .updates
+            .update_all_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.update_all_packages();
+                }
+            ));
 
-        self.widgets.updates.list.connect_row_activated(
-            glib::clone!(@strong self as controller => move |_, row| {
-                controller.on_update_row_activated(row);
-            }),
-        );
-        self.widgets.updates.detail_close_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_updates_detail_close();
-            }),
-        );
-        self.widgets.updates.detail_update_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_updates_detail_update();
-            }),
-        );
+        self.widgets
+            .updates
+            .list
+            .connect_row_activated(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_, row| {
+                    controller.on_update_row_activated(row);
+                }
+            ));
+        self.widgets
+            .updates
+            .detail_close_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_updates_detail_close();
+                }
+            ));
+        self.widgets
+            .updates
+            .detail_update_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_updates_detail_update();
+                }
+            ));
 
-        self.widgets.updates.list.connect_row_selected(
-            glib::clone!(@strong self as controller => move |_, row| {
+        self.widgets.updates.list.connect_row_selected(glib::clone!(
+            #[strong(rename_to = controller)]
+            self,
+            move |_, row| {
                 controller.on_update_row_selected(row.cloned());
-            }),
-        );
+            }
+        ));
 
         let auto_enabled = self.state.borrow().auto_check_enabled;
         if auto_enabled {

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 use gtk::glib;
+use glib::prelude::Cast;
 use gtk4 as gtk;
 use libadwaita as adw;
 use libadwaita::prelude::*;
@@ -31,6 +32,17 @@ pub(crate) fn populate_spotlight_list(list: &gtk::ListBox, packages: &[PackageIn
     for pkg in packages {
         let row = build_spotlight_row(pkg);
         list.append(&row);
+    }
+}
+
+pub(crate) fn select_row_if_attached(list: &gtk::ListBox, row: &gtk::ListBoxRow) {
+    if row
+        .parent()
+        .and_then(|widget| widget.downcast::<gtk::ListBox>().ok())
+        .map(|parent| parent.as_ptr() == list.as_ptr())
+        .unwrap_or(false)
+    {
+        list.select_row(Some(row));
     }
 }
 
@@ -126,6 +138,20 @@ pub(crate) fn sanitize_contact_field(value: &str) -> String {
     }
 
     trimmed.replace('<', "").replace('>', "").trim().to_string()
+}
+
+pub(crate) fn set_link_label(label: &gtk::Label, url: Option<&str>) {
+    if let Some(url) = url {
+        let display = glib::markup_escape_text(url);
+        let href = glib::markup_escape_text(url);
+        label.set_markup(&format!("<a href=\"{href}\">{display}</a>"));
+        label.set_visible(true);
+        label.set_tooltip_text(Some(url));
+    } else {
+        label.set_text("");
+        label.set_visible(false);
+        label.set_tooltip_text(None);
+    }
 }
 
 pub(crate) fn package_matches_filter(pkg: &PackageInfo, filter_lower: &str) -> bool {

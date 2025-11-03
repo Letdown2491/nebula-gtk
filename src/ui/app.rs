@@ -362,7 +362,14 @@ pub(crate) fn build_ui(app: &adw::Application) {
 
     controller.initialize_spotlight();
     controller.refresh_installed_packages();
-    controller.refresh_updates(true);
+
+    {
+        let controller_clone = controller.clone();
+        glib::idle_add_local(move || {
+            controller_clone.refresh_updates(true);
+            glib::ControlFlow::Break
+        });
+    }
 
     let settings_for_close = Rc::clone(&settings);
     window.connect_close_request(move |win| {

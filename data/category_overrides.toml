@@ -5,10 +5,10 @@
 # the primary template name under vendor/void-packages/srcpkgs.
 
 ["Browsers"]
-packages = ["badwolf", "dillo", "epiphany", "firefox", "firefox-esr", "chromium", "falkon", "flinks", "konqueror", "links", "links-x11", "lynx", "netsurf", "otter-browser", "surf", "vimb", "w3m"]
+packages = ["badwolf", "dillo", "chromium", "elinks", "epiphany", "falkon", "firefox", "firefox-esr", "flinks", "konqueror", "links", "links-x11", "lynx", "netsurf", "otter-browser", "surf", "vimb", "w3m"]
 
 ["Chat"]
-packages = ["element-desktop", "hexchat", "weechat"]
+packages = ["element-desktop", "hexchat", "weechat", "murmur", ]
 
 ["E-mail"]
 packages = ["thunderbird", "geary"]

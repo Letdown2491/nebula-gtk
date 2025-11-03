@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "generated_at": "2025-11-03T07:39:04Z",
+    "generated_at": "2025-11-03T09:21:59Z",
     "total_packages": 9348,
-    "overrides_applied": 19,
+    "overrides_applied": 38,
     "summary": [
       {
         "category": "Books",
@@ -10,7 +10,7 @@
       },
       {
         "category": "Browsers",
-        "packages": 49
+        "packages": 51
       },
       {
         "category": "Chat",
@@ -58,7 +58,7 @@
       },
       {
         "category": "Other",
-        "packages": 5766
+        "packages": 5764
       },
       {
         "category": "Photos",
@@ -4204,11 +4204,10 @@
     {
       "pkgname": "abiword",
       "category": "Office",
-      "score": 11.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'word'",
-        "pkgname contains 'abiword'"
+        "override → Office"
       ],
       "alternatives": [],
       "short_desc": "Free word processing program similar to Microsoft(R) Word",
@@ -8341,11 +8340,10 @@
     {
       "pkgname": "badwolf",
       "category": "Browsers",
-      "score": 8.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'browser'",
-        "dependencies contains 'webkit'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Minimalist and privacy-oriented WebKitGTK+ browser",
@@ -12658,10 +12656,10 @@
     {
       "pkgname": "catdoc",
       "category": "Office",
-      "score": 5.5,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'office'"
+        "override → Office"
       ],
       "alternatives": [],
       "short_desc": "Convert Microsoft Office files to text",
@@ -19792,11 +19790,10 @@
     {
       "pkgname": "dillo",
       "category": "Browsers",
-      "score": 10.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Small and light graphical web browser",
@@ -22829,11 +22826,11 @@
     },
     {
       "pkgname": "elinks",
-      "category": "Other",
-      "score": 0.0,
-      "override_applied": false,
+      "category": "Browsers",
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "no heuristic match"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Full-Featured Text WWW Browser",
@@ -23375,12 +23372,10 @@
     {
       "pkgname": "epiphany",
       "category": "Browsers",
-      "score": 13.5,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'",
-        "dependencies contains 'webkit'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Intuitive GNOME web browser",
@@ -25811,23 +25806,12 @@
     {
       "pkgname": "firefox-esr",
       "category": "Browsers",
-      "score": 17.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'",
-        "pkgname contains 'firefox'"
+        "override → Browsers"
       ],
-      "alternatives": [
-        {
-          "category": "Music",
-          "score": 7.0,
-          "reasons": [
-            "dependencies contains 'alsa'",
-            "dependencies contains 'pulseaudio'"
-          ]
-        }
-      ],
+      "alternatives": [],
       "short_desc": "Mozilla Firefox web browser - Extended Support Release",
       "homepage": "https://www.mozilla.org/firefox/",
       "template_path": "firefox-esr"
@@ -26204,21 +26188,12 @@
     {
       "pkgname": "flinks",
       "category": "Browsers",
-      "score": 10.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'"
+        "override → Browsers"
       ],
-      "alternatives": [
-        {
-          "category": "Office",
-          "score": 5.0,
-          "reasons": [
-            "short_desc contains 'word'"
-          ]
-        }
-      ],
+      "alternatives": [],
       "short_desc": "Text-mode flashing word web browser for speed-reading and/or skimming",
       "homepage": "https://mbays.freeshell.org/flinks/",
       "template_path": "flinks"
@@ -45607,11 +45582,10 @@
     {
       "pkgname": "konqueror",
       "category": "Browsers",
-      "score": 10.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "KDE File Manager & Web Browser",
@@ -54030,21 +54004,12 @@
     {
       "pkgname": "libreoffice",
       "category": "Office",
-      "score": 12.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "pkgname contains 'libreoffice'",
-        "dependencies contains 'libreoffice'"
+        "override → Office"
       ],
-      "alternatives": [
-        {
-          "category": "Productivity",
-          "score": 5.5,
-          "reasons": [
-            "short_desc contains 'productivity'"
-          ]
-        }
-      ],
+      "alternatives": [],
       "short_desc": "Productivity suite",
       "homepage": "https://www.libreoffice.org/",
       "template_path": "libreoffice"
@@ -54052,11 +54017,10 @@
     {
       "pkgname": "libreoffice-dictionaries",
       "category": "Office",
-      "score": 12.5,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'office'",
-        "pkgname contains 'libreoffice'"
+        "override → Office"
       ],
       "alternatives": [],
       "short_desc": "Libre Office Dictionaries",
@@ -56968,21 +56932,12 @@
     {
       "pkgname": "links",
       "category": "Browsers",
-      "score": 10.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'"
+        "override → Browsers"
       ],
-      "alternatives": [
-        {
-          "category": "Graphics",
-          "score": 5.5,
-          "reasons": [
-            "short_desc contains 'graphics'"
-          ]
-        }
-      ],
+      "alternatives": [],
       "short_desc": "Graphics and text mode web browser, released under GPL",
       "homepage": "http://links.twibright.com/",
       "template_path": "links"
@@ -56990,21 +56945,12 @@
     {
       "pkgname": "links-x11",
       "category": "Browsers",
-      "score": 10.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'"
+        "override → Browsers"
       ],
-      "alternatives": [
-        {
-          "category": "Graphics",
-          "score": 5.5,
-          "reasons": [
-            "short_desc contains 'graphics'"
-          ]
-        }
-      ],
+      "alternatives": [],
       "short_desc": "Graphics and text mode web browser (with X11 graphics driver)",
       "homepage": "http://links.twibright.com/",
       "template_path": "links-x11"
@@ -59847,11 +59793,11 @@
     },
     {
       "pkgname": "lynx",
-      "category": "Other",
-      "score": 0.0,
-      "override_applied": false,
+      "category": "Browsers",
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "no heuristic match"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Text browser for the World Wide Web",
@@ -66480,11 +66426,10 @@
     {
       "pkgname": "netsurf",
       "category": "Browsers",
-      "score": 10.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Free, open source web browser written in C",
@@ -70659,14 +70604,10 @@
     {
       "pkgname": "otter-browser",
       "category": "Browsers",
-      "score": 20.5,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "pkgname contains 'browser'",
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'",
-        "dependencies contains 'webkit'",
-        "template path contains 'browser'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Web browser aiming to recreate the best aspects of the classic Opera UI",
@@ -110448,12 +110389,10 @@
     {
       "pkgname": "surf",
       "category": "Browsers",
-      "score": 13.5,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'",
-        "dependencies contains 'webkit'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Simple web browser based on WebKit/GTK+",
@@ -118516,12 +118455,10 @@
     {
       "pkgname": "vimb",
       "category": "Browsers",
-      "score": 13.5,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'",
-        "dependencies contains 'webkit'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Fast and lightweight web browser based on WebKit/GTK+",
@@ -119561,11 +119498,10 @@
     {
       "pkgname": "w3m",
       "category": "Browsers",
-      "score": 10.0,
-      "override_applied": false,
+      "score": null,
+      "override_applied": true,
       "reasons": [
-        "short_desc contains 'web browser'",
-        "short_desc contains 'browser'"
+        "override → Browsers"
       ],
       "alternatives": [],
       "short_desc": "Text-based Web browser and pager (with Debian patches)",

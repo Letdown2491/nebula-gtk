@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
-- Document Rust 1.88.0 minimum requirement now that the 2024 edition is stable.
-- Upgrade GTK stack to `gtk4 0.10.2`, `libadwaita 0.8.0`, and `glib-build-tools 0.21.0`.
-- Update dependency set to `reqwest 0.12`, `feed-rs 2.3`, `toml 0.9`, and `phf 0.13` (including build-time codegen tooling).
-- Regenerate PHF category map with the new codegen API and migrate `glib::clone!` usage to the latest capture syntax.
+## 1.0.0
+- Discover catalog with curated categories, recent updates, and full-text search for Void Linux software.
+- Split-view app details pane with homepage links, dependency navigation, install/remove actions, and consistent layout across sections.
+- Installed and Updates dashboards with queued operations, update checks after startup, and XBPS-powered upgrade workflows.
+- Startup experience tuned for responsiveness, including deferred update refresh and centered toolbar navigation.
+- Bundled icons, desktop entry, and category data generation tooling for distribution builds.

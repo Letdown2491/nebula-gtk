@@ -26,11 +26,6 @@ pub(crate) struct AppWidgets {
     pub(crate) updates: UpdatesWidgets,
     pub(crate) tools: ToolsWidgets,
     pub(crate) updates_page: adw::ViewStackPage,
-    pub(crate) discover_button: gtk::ToggleButton,
-    pub(crate) installed_button: gtk::ToggleButton,
-    pub(crate) updates_button: gtk::ToggleButton,
-    pub(crate) tools_button: gtk::ToggleButton,
-    pub(crate) updates_badge: gtk::Label,
 }
 
 pub(crate) fn build_ui(app: &adw::Application) {
@@ -62,6 +57,8 @@ pub(crate) fn build_ui(app: &adw::Application) {
     toast_overlay.set_child(Some(&root_box));
 
     let view_stack = adw::ViewStack::new();
+    view_stack.set_vexpand(true);
+    view_stack.set_hexpand(true);
 
     let header_bar = adw::HeaderBar::new();
     header_bar.add_css_class("nebula-headerbar");
@@ -266,67 +263,26 @@ pub(crate) fn build_ui(app: &adw::Application) {
     let (updates_page, updates_widgets) = build_updates_page();
     let (tools_page, tools_widgets) = build_tools_page();
 
-    let discover_page_ref = view_stack.add_titled(&discover_page, Some("discover"), "Discover");
-    discover_page_ref.set_icon_name(Some(""));
-    let installed_page_ref = view_stack.add_titled(&installed_page, Some("installed"), "Installed");
-    installed_page_ref.set_icon_name(Some(""));
+    {
+        let page = view_stack.add_titled(&discover_page, Some("discover"), "Discover");
+        page.set_icon_name(None::<&str>);
+    }
+    {
+        let page = view_stack.add_titled(&installed_page, Some("installed"), "Installed");
+        page.set_icon_name(None::<&str>);
+    }
     let updates_page_ref = view_stack.add_titled(&updates_page, Some("updates"), "Updates");
-    updates_page_ref.set_icon_name(Some(""));
-    let tools_page_ref = view_stack.add_titled(&tools_page, Some("tools"), "Tools");
-    tools_page_ref.set_icon_name(Some(""));
+    updates_page_ref.set_icon_name(None::<&str>);
+    {
+        let page = view_stack.add_titled(&tools_page, Some("tools"), "Tools");
+        page.set_icon_name(None::<&str>);
+    }
     updates_page_ref.set_badge_number(0);
-    view_stack.set_vexpand(true);
-
-    let switcher_box = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(6)
-        .build();
-    switcher_box.add_css_class("nebula-switcher");
-    switcher_box.set_halign(gtk::Align::Center);
-    switcher_box.set_margin_bottom(6);
-
-    let discover_button = gtk::ToggleButton::builder().label("Discover").build();
-    discover_button.add_css_class("flat");
-    discover_button.set_active(true);
-
-    let installed_button = gtk::ToggleButton::builder().label("Installed").build();
-    installed_button.add_css_class("flat");
-    installed_button.set_group(Some(&discover_button));
-
-    let updates_button = gtk::ToggleButton::builder().build();
-    updates_button.add_css_class("flat");
-    updates_button.set_group(Some(&discover_button));
-
-    let updates_content = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(5)
-        .halign(gtk::Align::Center)
-        .build();
-    let updates_label = gtk::Label::new(Some("Updates"));
-    let updates_badge = gtk::Label::new(Some("0"));
-    updates_badge.add_css_class("tag");
-    updates_badge.add_css_class("accent");
-    updates_badge.add_css_class("nebula-badge");
-    updates_badge.set_xalign(0.5);
-    updates_badge.set_yalign(0.5);
-    updates_badge.set_halign(gtk::Align::Center);
-    updates_badge.set_valign(gtk::Align::Center);
-    updates_badge.set_margin_start(4);
-    updates_badge.set_visible(false);
-    updates_content.append(&updates_label);
-    updates_content.append(&updates_badge);
-    updates_button.set_child(Some(&updates_content));
-
-    let tools_button = gtk::ToggleButton::builder().label("Tools").build();
-    tools_button.add_css_class("flat");
-    tools_button.set_group(Some(&discover_button));
-
-    switcher_box.append(&discover_button);
-    switcher_box.append(&installed_button);
-    switcher_box.append(&updates_button);
-    switcher_box.append(&tools_button);
-
-    content.append(&switcher_box);
+    let view_switcher_bar = adw::ViewSwitcherBar::new();
+    view_switcher_bar.set_stack(Some(&view_stack));
+    view_switcher_bar.set_reveal(true);
+    view_switcher_bar.add_css_class("nebula-view-switcher-bar");
+    content.append(&view_switcher_bar);
     content.append(&view_stack);
 
     let widgets = AppWidgets {
@@ -337,11 +293,6 @@ pub(crate) fn build_ui(app: &adw::Application) {
         updates: updates_widgets,
         tools: tools_widgets,
         updates_page: updates_page_ref,
-        discover_button: discover_button.clone(),
-        installed_button: installed_button.clone(),
-        updates_button: updates_button.clone(),
-        tools_button: tools_button.clone(),
-        updates_badge: updates_badge.clone(),
     };
 
     let (sender, receiver) = mpsc::channel::<AppMessage>();

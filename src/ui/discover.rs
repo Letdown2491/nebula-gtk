@@ -42,7 +42,6 @@ fn build_category_button(icon_name: &str, label: &str) -> gtk::ToggleButton {
 
 pub(crate) struct DiscoverWidgets {
     pub(crate) search_entry: gtk::SearchEntry,
-    pub(crate) search_button: gtk::Button,
     pub(crate) search_spinner: gtk::Spinner,
     pub(crate) status_label: gtk::Label,
     pub(crate) list: gtk::ListBox,
@@ -111,6 +110,10 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     let container = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
+        .margin_start(16)
+        .margin_end(16)
+        .margin_top(0)
+        .margin_bottom(12)
         .build();
     container.set_vexpand(true);
 
@@ -118,9 +121,15 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .placeholder_text("Search the Void Linux repositories")
         .hexpand(true)
         .build();
+    search_entry.set_valign(gtk::Align::Center);
 
-    let search_button = gtk::Button::builder().label("Search").build();
-    search_button.add_css_class("suggested-action");
+    let search_bar = gtk::SearchBar::new();
+    search_bar.set_hexpand(true);
+    search_bar.set_search_mode(true);
+    search_bar.set_show_close_button(false);
+    search_bar.set_key_capture_widget(Some(&container));
+    search_bar.connect_entry(&search_entry);
+    search_bar.set_child(Some(&search_entry));
 
     let search_spinner = gtk::Spinner::new();
     search_spinner.set_visible(false);
@@ -129,9 +138,9 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     let search_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
+        .hexpand(true)
         .build();
-    search_row.append(&search_entry);
-    search_row.append(&search_button);
+    search_row.append(&search_bar);
     search_row.append(&search_spinner);
 
     let categories_list = gtk::Box::builder()
@@ -975,7 +984,6 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
 
     let widgets = DiscoverWidgets {
         search_entry,
-        search_button,
         search_spinner,
         status_label,
         list,

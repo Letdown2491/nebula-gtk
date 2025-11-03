@@ -78,74 +78,34 @@ headerbar.nebula-headerbar button.nebula-header-button:active {
   box-shadow: inset 0 0 0 1px alpha(@nebula_accent_bright, 0.45);
 }
 
-headerbar.nebula-headerbar label.nebula-header-title {
+headerbar.nebula-headerbar .nebula-header-title {
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: @nebula_text;
 }
 
 .nebula-content {
-  padding: 12px 16px 16px;
+  padding: 18px 20px 20px;
   background-color: transparent;
 }
 
-.nebula-switcher {
-  background-color: alpha(@nebula_surface, 0.65);
-  padding: 6px;
-  border-radius: 999px;
-  border: 1px solid @nebula_border;
-  box-shadow: 0 20px 40px -35px @nebula_shadow;
-}
-
-.nebula-switcher > togglebutton,
-.nebula-switcher > button {
-  border-radius: 999px;
-  padding: 8px 18px;
-  border: 1px solid transparent;
-  color: @nebula_muted;
-  font-weight: 500;
-}
-
-.nebula-switcher > togglebutton:hover,
-.nebula-switcher > button:hover {
+.nebula-root entry,
+.nebula-root searchentry {
+  background-color: alpha(@nebula_surface, 0.85);
+  border: 1px solid alpha(@nebula_border, 0.4);
+  border-radius: 9px;
+  padding: 6px 12px;
   color: @nebula_text;
 }
 
-.nebula-switcher > togglebutton:checked,
-.nebula-switcher > button:checked {
-  background-image: linear-gradient(
-      135deg,
-      alpha(@nebula_accent_bright, 0.85),
-      alpha(@nebula_accent, 0.95)
-  );
-  color: #05110d;
-  box-shadow: 0 8px 22px -14px alpha(@nebula_accent_bright, 0.8);
+.nebula-root entry:hover,
+.nebula-root searchentry:hover {
+  border-color: alpha(@nebula_border, 0.7);
 }
 
-.nebula-switcher > togglebutton:checked > label,
-.nebula-switcher > button:checked > label {
-  color: inherit;
-}
-
-entry,
-searchentry {
-  background-color: @nebula_surface;
-  border: 1px solid alpha(@nebula_border, 0.8);
-  border-radius: 14px;
-  padding: 8px 14px;
-  color: @nebula_text;
-}
-
-entry:hover,
-searchentry:hover {
-  border-color: @nebula_border;
-}
-
-entry:focus,
-searchentry:focus {
+.nebula-root entry:focus,
+.nebula-root searchentry:focus {
   border-color: @nebula_accent_bright;
-  box-shadow: 0 0 0 3px alpha(@nebula_accent_bright, 0.22);
+  box-shadow: 0 0 0 2px alpha(@nebula_accent_bright, 0.18);
 }
 
 selection,
@@ -167,49 +127,39 @@ button.flat {
 }
 
 button.suggested-action {
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 10px 20px;
   border: 1px solid transparent;
-  background-image: linear-gradient(
-      135deg,
-      @nebula_accent,
-      @nebula_accent_bright
-  );
+  background-color: @nebula_accent;
   color: #04120d;
   font-weight: 600;
   letter-spacing: 0.01em;
-  box-shadow: 0 14px 32px -24px alpha(@nebula_accent_bright, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 button.suggested-action:hover {
-  box-shadow: 0 16px 34px -18px alpha(@nebula_accent_bright, 0.85);
+  background-color: @nebula_accent_bright;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 button.suggested-action:active,
 button.suggested-action:checked {
-  background-image: linear-gradient(
-      135deg,
-      mix(@nebula_accent, @nebula_bg, 0.6),
-      @nebula_accent
-  );
-  box-shadow: inset 0 0 0 1px alpha(@nebula_accent_bright, 0.55);
+  background-color: mix(@nebula_accent, @nebula_bg, 0.7);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 button.destructive-action {
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 10px 20px;
-  background-image: linear-gradient(
-      135deg,
-      #f37286,
-      #f05b6e
-  );
+  background-color: #f05b6e;
   color: #ffffff;
   border: 1px solid transparent;
-  box-shadow: 0 14px 32px -26px rgba(243, 114, 134, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 button.destructive-action:hover {
-  box-shadow: 0 16px 36px -20px rgba(243, 114, 134, 0.75);
+  background-color: #f37286;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 button.pill {
@@ -229,7 +179,7 @@ button.pill:checked {
   background-color: alpha(@nebula_accent, 0.2);
   border-color: alpha(@nebula_accent_bright, 0.4);
   color: @nebula_accent_bright;
-  box-shadow: 0 10px 28px -22px alpha(@nebula_accent_bright, 0.65);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .boxed-list {
@@ -239,11 +189,11 @@ button.pill:checked {
 
 .boxed-list > row {
   background-color: @nebula_surface;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid transparent;
   margin: 6px 0;
   padding: 14px 18px;
-  box-shadow: 0 12px 26px -26px @nebula_shadow;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .boxed-list > row:hover {
@@ -255,7 +205,7 @@ button.pill:checked {
 .boxed-list > row:checked {
   border-color: alpha(@nebula_accent_bright, 0.5);
   background-color: alpha(@nebula_accent, 0.22);
-  box-shadow: 0 18px 38px -28px alpha(@nebula_accent_bright, 0.7);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .boxed-list separator {
@@ -264,16 +214,16 @@ button.pill:checked {
 
 .nebula-card {
   background-color: @nebula_surface;
-  border-radius: 18px;
+  border-radius: 12px;
   border: 1px solid alpha(@nebula_border, 0.7);
-  box-shadow: 0 22px 44px -36px @nebula_shadow;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   padding: 18px;
   color: @nebula_text;
 }
 
 .nebula-card.compact {
-  border-radius: 14px;
-  box-shadow: 0 18px 36px -32px @nebula_shadow;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   padding: 12px;
 }
 
@@ -283,9 +233,9 @@ button.pill:checked {
 
 popover {
   background-color: @nebula_surface;
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid @nebula_border;
-  box-shadow: 0 30px 60px -24px @nebula_shadow;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   color: @nebula_text;
 }
 
@@ -321,28 +271,48 @@ label.accent {
   font-weight: 600;
 }
 
-.tag.accent {
-  background-image: linear-gradient(
-      135deg,
-      alpha(@nebula_accent_bright, 0.85),
-      alpha(@nebula_accent, 0.95)
-  );
+.tag.accent,
+.adw-view-switcher .badge,
+.nebula-view-switcher-bar .badge {
+  background-color: @nebula_accent;
   color: #04110d;
-  border: 1px solid transparent;
-}
-
-label.nebula-badge {
+  border: 1px solid alpha(@nebula_accent_bright, 0.5);
   border-radius: 999px;
-  min-width: 26px;
-  min-height: 26px;
-  padding: 0;
-  margin: 0;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  padding: 0 8px;
+  min-height: 22px;
 }
 
-label.nebula-badge > * {
+.nebula-view-switcher-bar {
+  background-color: alpha(@nebula_surface, 0.7);
+  border: 1px solid alpha(@nebula_border, 0.45);
+  border-radius: 12px;
+  margin-bottom: 12px;
+  padding: 4px 10px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.nebula-view-switcher-bar .adw-view-switcher button {
+  border-radius: 9px;
+  padding: 6px 16px;
+  margin: 0 2px;
+}
+
+.nebula-view-switcher-bar .adw-view-switcher button image {
   margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.nebula-view-switcher-bar .adw-view-switcher button image {
+  opacity: 0;
+  min-width: 0;
+  min-height: 0;
+  margin-right: 0;
+}
+
+.nebula-view-switcher-bar .adw-view-switcher button label {
+  margin-left: 0;
 }
 
 spinner {
@@ -359,7 +329,7 @@ scrollbar {
 
 scrollbar slider {
   background-color: alpha(@nebula_accent, 0.35);
-  border-radius: 12px;
+  border-radius: 9999px;
 }
 
 .theme-circle {
@@ -379,7 +349,7 @@ scrollbar slider {
 
 .theme-circle.theme-active {
   border-color: @nebula_accent_bright;
-  box-shadow: 0 0 12px -4px alpha(@nebula_accent_bright, 0.9);
+  box-shadow: 0 0 0 2px alpha(@nebula_accent_bright, 0.3);
 }
 
 /* Light theme overrides */
@@ -399,9 +369,9 @@ window.nebula-window.nebula-theme-light headerbar.nebula-headerbar label.nebula-
 }
 
 window.nebula-window.nebula-theme-light .nebula-switcher {
-  background-color: alpha(@nebula_light_surface, 0.95);
-  border: 1px solid alpha(@nebula_light_border, 0.9);
-  box-shadow: 0 20px 36px -34px @nebula_light_shadow;
+  background-color: alpha(@nebula_light_surface, 0.9);
+  border: 1px solid alpha(@nebula_light_border, 0.5);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 window.nebula-window.nebula-theme-light .nebula-switcher > togglebutton,
@@ -412,6 +382,16 @@ window.nebula-window.nebula-theme-light .nebula-switcher > button {
 window.nebula-window.nebula-theme-light .nebula-switcher > togglebutton:hover,
 window.nebula-window.nebula-theme-light .nebula-switcher > button:hover {
   color: @nebula_light_text;
+  background-color: alpha(@nebula_accent, 0.08);
+}
+
+window.nebula-window.nebula-theme-light .nebula-switcher > togglebutton:checked,
+window.nebula-window.nebula-theme-light .nebula-switcher > button:checked {
+  background-color: @nebula_light_bg;
+  color: @nebula_accent;
+  border: 1px solid alpha(@nebula_light_border, 0.7);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1),
+              0 0 0 1px alpha(@nebula_accent_bright, 0.15);
 }
 
 window.nebula-window.nebula-theme-light entry,
@@ -440,11 +420,7 @@ window.nebula-window.nebula-theme-light text selection {
 
 window.nebula-window.nebula-theme-light button.suggested-action:active,
 window.nebula-window.nebula-theme-light button.suggested-action:checked {
-  background-image: linear-gradient(
-      135deg,
-      mix(@nebula_accent, @nebula_light_bg, 0.6),
-      @nebula_accent
-  );
+  background-color: mix(@nebula_accent, @nebula_light_bg, 0.7);
 }
 
 window.nebula-window.nebula-theme-light button.pill {
@@ -459,13 +435,13 @@ window.nebula-window.nebula-theme-light button.pill:checked {
   background-color: alpha(@nebula_accent, 0.15);
   border-color: alpha(@nebula_accent_bright, 0.4);
   color: @nebula_accent;
-  box-shadow: 0 10px 24px -20px alpha(@nebula_accent_bright, 0.55);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 window.nebula-window.nebula-theme-light .boxed-list > row {
   background-color: @nebula_light_surface;
   border: 1px solid alpha(@nebula_light_border, 0.4);
-  box-shadow: 0 12px 26px -24px @nebula_light_shadow;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   color: @nebula_light_text;
 }
 
@@ -478,18 +454,18 @@ window.nebula-window.nebula-theme-light .boxed-list > row:selected,
 window.nebula-window.nebula-theme-light .boxed-list > row:checked {
   border-color: alpha(@nebula_accent_bright, 0.4);
   background-color: alpha(@nebula_accent, 0.18);
-  box-shadow: 0 18px 36px -28px alpha(@nebula_accent_bright, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 window.nebula-window.nebula-theme-light .nebula-card {
   background-color: @nebula_light_surface;
   border: 1px solid alpha(@nebula_light_border, 0.6);
-  box-shadow: 0 22px 40px -34px @nebula_light_shadow;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   color: @nebula_light_text;
 }
 
 window.nebula-window.nebula-theme-light .nebula-card.compact {
-  box-shadow: 0 18px 32px -30px @nebula_light_shadow;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 window.nebula-window.nebula-theme-light .nebula-card.transparent {
@@ -499,7 +475,7 @@ window.nebula-window.nebula-theme-light .nebula-card.transparent {
 window.nebula-window.nebula-theme-light popover {
   background-color: @nebula_light_surface;
   border: 1px solid alpha(@nebula_light_border, 0.85);
-  box-shadow: 0 30px 50px -24px @nebula_light_shadow;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   color: @nebula_light_text;
 }
 
@@ -534,5 +510,5 @@ window.nebula-window.nebula-theme-light .theme-circle:hover {
 
 window.nebula-window.nebula-theme-light .theme-circle.theme-active {
   border-color: @nebula_accent_bright;
-  box-shadow: 0 0 10px -4px alpha(@nebula_accent_bright, 0.75);
+  box-shadow: 0 0 0 2px alpha(@nebula_accent_bright, 0.25);
 }

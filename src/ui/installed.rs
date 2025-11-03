@@ -40,6 +40,10 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
     let container = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
+        .margin_start(16)
+        .margin_end(16)
+        .margin_top(0)
+        .margin_bottom(16)
         .build();
     container.set_vexpand(true);
 
@@ -47,6 +51,15 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
         .placeholder_text("Search installed packages")
         .hexpand(true)
         .build();
+    search_entry.set_valign(gtk::Align::Center);
+
+    let search_bar = gtk::SearchBar::new();
+    search_bar.set_hexpand(true);
+    search_bar.set_search_mode(true);
+    search_bar.set_show_close_button(false);
+    search_bar.set_key_capture_widget(Some(&container));
+    search_bar.connect_entry(&search_entry);
+    search_bar.set_child(Some(&search_entry));
 
     let filter_model = gtk::StringList::new(&["All packages", "Updates available"]);
     let filter_dropdown = gtk::DropDown::builder()
@@ -55,13 +68,14 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
         .build();
     filter_dropdown.set_hexpand(false);
     filter_dropdown.add_css_class("nebula-compact-dropdown");
+    filter_dropdown.set_valign(gtk::Align::Center);
 
     let controls_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .hexpand(true)
         .build();
-    controls_row.append(&search_entry);
+    controls_row.append(&search_bar);
     controls_row.append(&filter_dropdown);
 
     let status_label = gtk::Label::builder()
@@ -446,8 +460,11 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
     container.append(&content_row);
     let footer_label = gtk::Label::builder()
         .halign(gtk::Align::Center)
+        .valign(gtk::Align::Center)
         .wrap(true)
         .wrap_mode(pango::WrapMode::WordChar)
+        .margin_top(6)
+        .margin_bottom(6)
         .build();
     footer_label.add_css_class("dim-label");
     footer_label.set_text("Last refreshed —");

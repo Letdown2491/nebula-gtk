@@ -79,12 +79,6 @@ impl AppController {
     }
 
     pub(crate) fn setup_connections(self: &Rc<Self>) {
-        self.widgets.discover.search_button.connect_clicked(
-            glib::clone!(@strong self as controller => move |_| {
-                controller.on_search_requested();
-            }),
-        );
-
         self.widgets.discover.search_entry.connect_search_changed(
             glib::clone!(@strong self as controller => move |entry| {
                 controller.on_discover_search_changed(entry.text().to_string());
@@ -239,38 +233,6 @@ impl AppController {
         self.widgets.installed.search_entry.connect_activate(
             glib::clone!(@strong self as controller => move |entry| {
                 controller.on_installed_search_changed(entry.text().to_string());
-            }),
-        );
-
-        self.widgets.discover_button.connect_toggled(
-            glib::clone!(@strong self as controller => move |btn| {
-                if btn.is_active() {
-                    controller.switch_to_page("discover");
-                }
-            }),
-        );
-
-        self.widgets.installed_button.connect_toggled(
-            glib::clone!(@strong self as controller => move |btn| {
-                if btn.is_active() {
-                    controller.switch_to_page("installed");
-                }
-            }),
-        );
-
-        self.widgets.updates_button.connect_toggled(
-            glib::clone!(@strong self as controller => move |btn| {
-                if btn.is_active() {
-                    controller.switch_to_page("updates");
-                }
-            }),
-        );
-
-        self.widgets.tools_button.connect_toggled(
-            glib::clone!(@strong self as controller => move |btn| {
-                if btn.is_active() {
-                    controller.switch_to_page("tools");
-                }
             }),
         );
 
@@ -441,36 +403,7 @@ impl AppController {
     }
 
     pub(crate) fn set_active_page(&self, page: &str) {
-        match page {
-            "installed" => {
-                if !self.widgets.installed_button.is_active() {
-                    self.widgets.installed_button.set_active(true);
-                } else {
-                    self.switch_to_page("installed");
-                }
-            }
-            "updates" => {
-                if !self.widgets.updates_button.is_active() {
-                    self.widgets.updates_button.set_active(true);
-                } else {
-                    self.switch_to_page("updates");
-                }
-            }
-            "tools" => {
-                if !self.widgets.tools_button.is_active() {
-                    self.widgets.tools_button.set_active(true);
-                } else {
-                    self.switch_to_page("tools");
-                }
-            }
-            _ => {
-                if !self.widgets.discover_button.is_active() {
-                    self.widgets.discover_button.set_active(true);
-                } else {
-                    self.switch_to_page("discover");
-                }
-            }
-        }
+        self.switch_to_page(page);
     }
 
     pub(crate) fn switch_to_page(&self, page: &str) {
@@ -721,17 +654,13 @@ impl AppController {
     pub(crate) fn on_view_changed(self: &Rc<Self>) {
         let current = self.widgets.view_stack.visible_child_name();
         match current.as_deref() {
-            Some("discover") => if !self.widgets.discover_button.is_active() {},
             Some("installed") => {
-                if !self.widgets.installed_button.is_active() {}
                 if self.state.borrow().installed_packages.is_empty()
                     && !self.state.borrow().installed_refresh_in_progress
                 {
                     self.refresh_installed_packages();
                 }
             }
-            Some("updates") => if !self.widgets.updates_button.is_active() {},
-            Some("tools") => if !self.widgets.tools_button.is_active() {},
             _ => {}
         }
 
@@ -1291,7 +1220,10 @@ impl AppController {
             link
         };
 
-        links_box.append(&make_link("Project website", "https://github.com/geektoshi/nebula"));
+        links_box.append(&make_link(
+            "Project website",
+            "https://github.com/geektoshi/nebula",
+        ));
         links_box.append(&make_link(
             "Report an issue",
             "https://github.com/geektoshi/nebula/issues",

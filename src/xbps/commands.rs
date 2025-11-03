@@ -238,10 +238,7 @@ pub(crate) fn query_package_metadata(package: &str) -> PackageMetadata {
     metadata
 }
 
-fn apply_package_metadata(
-    values: &HashMap<String, String>,
-    metadata: &mut PackageMetadata,
-) {
+fn apply_package_metadata(values: &HashMap<String, String>, metadata: &mut PackageMetadata) {
     if metadata.long_desc.is_none() {
         if let Some(long_desc) = values.get("long_desc").and_then(parse_long_description) {
             metadata.long_desc = Some(long_desc);
@@ -263,10 +260,7 @@ fn apply_package_metadata(
         }
     }
     if metadata.repository.is_none() {
-        if let Some(repository) = values
-            .get("repository")
-            .and_then(clean_simple_property)
-        {
+        if let Some(repository) = values.get("repository").and_then(clean_simple_property) {
             metadata.repository = Some(repository);
         }
     }

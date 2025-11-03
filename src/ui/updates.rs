@@ -42,6 +42,10 @@ pub(crate) fn build_page() -> (gtk::Box, UpdatesWidgets) {
     let container = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
+        .margin_start(16)
+        .margin_end(16)
+        .margin_top(0)
+        .margin_bottom(16)
         .build();
     container.set_vexpand(true);
 
@@ -440,8 +444,11 @@ pub(crate) fn build_page() -> (gtk::Box, UpdatesWidgets) {
     container.append(&placeholder);
     let footer_label = gtk::Label::builder()
         .halign(gtk::Align::Center)
+        .valign(gtk::Align::Center)
         .wrap(true)
         .wrap_mode(pango::WrapMode::WordChar)
+        .margin_top(6)
+        .margin_bottom(6)
         .build();
     footer_label.add_css_class("dim-label");
     footer_label.set_text("Last checked — never.");

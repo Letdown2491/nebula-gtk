@@ -92,12 +92,6 @@ impl AppController {
 
     pub(crate) fn update_updates_badge(&self) {
         let count = self.state.borrow().available_updates.len();
-        if count > 0 {
-            self.widgets.updates_badge.set_visible(true);
-            self.widgets.updates_badge.set_text(&count.to_string());
-        } else {
-            self.widgets.updates_badge.set_visible(false);
-        }
         self.widgets.updates_page.set_badge_number(count as u32);
     }
 

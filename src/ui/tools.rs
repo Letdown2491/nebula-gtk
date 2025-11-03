@@ -25,6 +25,10 @@ pub(crate) struct ToolsWidgets {
 pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
     let container = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
+        .margin_start(16)
+        .margin_end(16)
+        .margin_top(0)
+        .margin_bottom(16)
         .build();
     container.set_vexpand(true);
     container.set_hexpand(true);

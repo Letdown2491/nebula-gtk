@@ -11,7 +11,7 @@ use gtk::glib;
 use crate::details::InstalledDetail;
 use crate::helpers::{
     clear_listbox, format_relative_time, glib_datetime_to_chrono, package_matches_filter,
-    query_installed_detail, sanitize_contact_field, set_toggle_button_state,
+    query_installed_detail, sanitize_contact_field,
 };
 use crate::state::controller::AppController;
 use crate::state::types::{AppMessage, InstalledFilter, RemoveOrigin};
@@ -403,10 +403,7 @@ impl AppController {
                 .installed
                 .detail_stack
                 .set_visible_child_name("detail");
-            self.widgets
-                .installed
-                .detail_close_button
-                .set_visible(true);
+            self.widgets.installed.detail_close_button.set_visible(true);
             self.widgets
                 .installed
                 .detail_close_button
@@ -804,7 +801,7 @@ impl AppController {
             }
         }
 
-        set_toggle_button_state(&self.widgets.installed_button, true);
+        self.switch_to_page("installed");
 
         true
     }

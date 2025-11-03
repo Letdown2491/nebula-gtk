@@ -67,7 +67,7 @@ impl AppController {
 
         let message = format!("Searching for \"{}\"…", query);
         self.set_discover_status(Some(&message));
-        self.widgets.discover.search_button.set_sensitive(false);
+        self.widgets.discover.search_entry.set_editable(false);
         self.widgets.discover.search_spinner.set_visible(true);
         self.widgets.discover.search_spinner.start();
         let preserve_navigation = {
@@ -107,7 +107,7 @@ impl AppController {
 
         self.widgets.discover.search_spinner.stop();
         self.widgets.discover.search_spinner.set_visible(false);
-        self.widgets.discover.search_button.set_sensitive(true);
+        self.widgets.discover.search_entry.set_editable(true);
         self.rebuild_search_list();
         self.clear_discover_details(false);
         self.update_discover_layout();
@@ -181,7 +181,7 @@ impl AppController {
     ) {
         self.widgets.discover.search_spinner.stop();
         self.widgets.discover.search_spinner.set_visible(false);
-        self.widgets.discover.search_button.set_sensitive(true);
+        self.widgets.discover.search_entry.set_editable(true);
         {
             let mut state = self.state.borrow_mut();
             state.search_in_progress = false;

@@ -1,3 +1,4 @@
+mod categories;
 mod details;
 mod helpers;
 mod settings;

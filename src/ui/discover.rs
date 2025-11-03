@@ -3,6 +3,7 @@ use gtk4 as gtk;
 use libadwaita as adw;
 
 use adw::prelude::*;
+use gtk::prelude::WidgetExt;
 
 fn build_category_button(icon_name: &str, label: &str) -> gtk::ToggleButton {
     let button = gtk::ToggleButton::builder().build();
@@ -226,6 +227,7 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .spacing(12)
         .build();
     spotlight_section_box.set_margin_top(6);
+    spotlight_section_box.set_vexpand(true);
     spotlight_section_box.add_css_class("nebula-card");
 
     let spotlight_recent_list = gtk::ListBox::new();
@@ -240,12 +242,15 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .build();
     spotlight_recent_scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
     spotlight_recent_scroller.set_propagate_natural_height(false);
+    spotlight_recent_scroller.set_max_content_height(360);
     spotlight_recent_scroller.set_hexpand(true);
     spotlight_recent_scroller.set_vexpand(true);
     spotlight_recent_scroller.set_child(Some(&spotlight_recent_list));
 
     let spotlight_recent_overlay = gtk::Overlay::new();
     spotlight_recent_overlay.set_child(Some(&spotlight_recent_scroller));
+    spotlight_recent_overlay.set_hexpand(true);
+    spotlight_recent_overlay.set_vexpand(true);
 
     let spotlight_recent_placeholder = adw::StatusPage::builder()
         .title("Nothing updated recently")
@@ -563,6 +568,7 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     recent_detail_revealer.set_hexpand(true);
     recent_detail_revealer.set_vexpand(true);
     recent_detail_revealer.set_child(Some(&recent_detail_scroller));
+    recent_detail_revealer.set_can_target(false);
     spotlight_recent_overlay.add_overlay(&recent_detail_revealer);
     spotlight_recent_stack.set_visible_child_name("placeholder");
 
@@ -591,35 +597,6 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     recent_header_row.append(&recent_heading);
     recent_header_row.append(&recent_refresh_button);
 
-    let recent_group = adw::PreferencesGroup::new();
-    recent_group.set_title("");
-    recent_group.set_valign(gtk::Align::Fill);
-    recent_group.set_vexpand(true);
-    recent_group.add(&spotlight_recent_stack);
-
-    let categories_heading = gtk::Label::builder()
-        .label("Categories")
-        .halign(gtk::Align::Start)
-        .build();
-    categories_heading.add_css_class("title-2");
-    categories_heading.set_margin_bottom(4);
-
-    let categories_group = adw::PreferencesGroup::new();
-    categories_group.set_title("");
-    categories_group.set_hexpand(false);
-    categories_group.set_valign(gtk::Align::Start);
-    categories_group.add(&categories_list);
-
-    let categories_column = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(8)
-        .halign(gtk::Align::Start)
-        .build();
-    categories_column.set_hexpand(false);
-    categories_column.set_valign(gtk::Align::Start);
-    categories_column.append(&categories_heading);
-    categories_column.append(&categories_group);
-
     let recent_column = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(8)
@@ -628,15 +605,18 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .build();
     recent_column.set_valign(gtk::Align::Fill);
     recent_column.append(&recent_header_row);
-    recent_column.append(&recent_group);
+    recent_column.append(&spotlight_recent_stack);
+    spotlight_recent_stack.set_hexpand(true);
+    spotlight_recent_stack.set_vexpand(true);
 
     let spotlight_columns = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(24)
         .hexpand(true)
         .build();
-    spotlight_columns.append(&categories_column);
     spotlight_columns.append(&recent_column);
+    spotlight_columns.set_vexpand(true);
+    recent_column.set_vexpand(true);
 
     spotlight_section_box.append(&spotlight_columns);
 

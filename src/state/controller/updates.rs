@@ -8,6 +8,7 @@ use libadwaita as adw;
 use adw::prelude::*;
 use gtk::glib;
 
+use crate::categories::icon_resource_for_package;
 use crate::details::InstalledDetail;
 use crate::helpers::{
     clear_listbox, format_relative_time, glib_datetime_to_chrono, query_installed_detail,
@@ -217,7 +218,21 @@ impl AppController {
         check_button.connect_toggled(glib::clone!(@strong self as controller => move |btn| {
             controller.on_update_selection_changed(package_name.clone(), btn.is_active());
         }));
-        row.add_prefix(&check_button);
+
+        let icon = gtk::Image::from_resource(icon_resource_for_package(&pkg.name));
+        icon.set_pixel_size(32);
+        icon.set_margin_start(8);
+        icon.set_margin_end(6);
+        icon.set_valign(gtk::Align::Center);
+
+        let prefix_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(6)
+            .valign(gtk::Align::Center)
+            .build();
+        prefix_box.append(&check_button);
+        prefix_box.append(&icon);
+        row.add_prefix(&prefix_box);
 
         if !version_label_text.is_empty() {
             let version_label = gtk::Label::new(Some(version_label_text.as_str()));

@@ -3,14 +3,28 @@
   <gresource prefix="/tech/geektoshi/Nebula">
     <file>style.css</file>
     <file>icons/nebula.png</file>
+    <file>icons/discover.svg</file>
+    <file>icons/installed.svg</file>
+    <file>icons/updates.svg</file>
+    <file>icons/tools.svg</file>
+    <file>icons/voidlinux.png</file>
+    <file>icons/books.svg</file>
     <file>icons/browsers.svg</file>
     <file>icons/chat.svg</file>
+    <file>icons/development.svg</file>
+    <file>icons/education.svg</file>
     <file>icons/email.svg</file>
+    <file>icons/finance.svg</file>
     <file>icons/games.svg</file>
     <file>icons/graphics.svg</file>
+    <file>icons/kernels.svg</file>
     <file>icons/music.svg</file>
+    <file>icons/news.svg</file>
+    <file>icons/office.svg</file>
+    <file>icons/photo.svg</file>
     <file>icons/video.svg</file>
     <file>icons/productivity.svg</file>
+    <file>icons/system.svg</file>
     <file>icons/utilities.svg</file>
   </gresource>
 </gresources>

@@ -6,6 +6,7 @@ use gtk4 as gtk;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
+use crate::categories::icon_resource_for_package;
 use crate::details::{DiscoverDetail, InstalledDetail};
 use crate::types::PackageInfo;
 use crate::xbps::{
@@ -218,6 +219,12 @@ fn build_spotlight_row(pkg: &PackageInfo) -> adw::ActionRow {
     row.set_activatable(true);
     row.set_focusable(true);
     row.set_tooltip_text(Some("Open details for this package."));
+
+    let icon = gtk::Image::from_resource(icon_resource_for_package(&pkg.name));
+    icon.set_pixel_size(28);
+    icon.set_margin_end(12);
+    icon.set_valign(gtk::Align::Center);
+    row.add_prefix(&icon);
 
     let suffix_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)

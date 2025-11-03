@@ -1,0 +1,32 @@
+# Hand-curated package → category assignments.
+#
+# Table names must match the user-facing category labels exactly; use quotes
+# if the label contains spaces. Package names should be lowercase and refer to
+# the primary template name under vendor/void-packages/srcpkgs.
+
+["Browsers"]
+packages = ["badwolf", "dillo", "epiphany", "firefox", "firefox-esr", "chromium", "falkon", "flinks", "konqueror", "links", "links-x11", "lynx", "netsurf", "otter-browser", "surf", "vimb", "w3m"]
+
+["Chat"]
+packages = ["element-desktop", "hexchat", "weechat"]
+
+["E-mail"]
+packages = ["thunderbird", "geary"]
+
+["Gaming"]
+packages = ["steam", "lutris", "0ad"]
+
+["Kernels"]
+packages = ["linux-headers"]
+
+["Music"]
+packages = ["clementine", "rhythmbox", "spotify"]
+
+["Office"]
+packages = ["abiword", "catdoc", "libreoffice", "libreoffice-base", "libreoffice-calc", "libreoffice-draw", "libreoffice-dictionaries", "libreoffice-gnome", "libreoffice-impress", "libreoffice-kde", "libreoffice-math"]
+
+["Productivity"]
+packages = ["gnome-calendar", "khal"]
+
+["Video"]
+packages = ["vlc", "mpv", "plex-media-player"]

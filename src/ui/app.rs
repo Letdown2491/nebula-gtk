@@ -7,7 +7,7 @@ use libadwaita as adw;
 
 use adw::prelude::*;
 use glib::{Variant, VariantTy};
-use gtk::{gio, glib};
+use gtk::{gdk, gio, glib};
 
 use crate::settings::{ThemePreference, load_app_settings, save_app_settings};
 use crate::state::controller::AppController;
@@ -31,6 +31,10 @@ pub(crate) struct AppWidgets {
 pub(crate) fn build_ui(app: &adw::Application) {
     gio::resources_register_include!("nebula.gresource")
         .expect("Failed to register embedded resources");
+    if let Some(display) = gdk::Display::default() {
+        let theme = gtk::IconTheme::for_display(&display);
+        theme.add_resource_path("/tech/geektoshi/Nebula/icons");
+    }
 
     let settings = Rc::new(RefCell::new(load_app_settings()));
     let (initial_width, initial_height) = {
@@ -265,17 +269,17 @@ pub(crate) fn build_ui(app: &adw::Application) {
 
     {
         let page = view_stack.add_titled(&discover_page, Some("discover"), "Discover");
-        page.set_icon_name(None::<&str>);
+        page.set_icon_name(Some("discover"));
     }
     {
         let page = view_stack.add_titled(&installed_page, Some("installed"), "Installed");
-        page.set_icon_name(None::<&str>);
+        page.set_icon_name(Some("installed"));
     }
     let updates_page_ref = view_stack.add_titled(&updates_page, Some("updates"), "Updates");
-    updates_page_ref.set_icon_name(None::<&str>);
+    updates_page_ref.set_icon_name(Some("updates"));
     {
         let page = view_stack.add_titled(&tools_page, Some("tools"), "Tools");
-        page.set_icon_name(None::<&str>);
+        page.set_icon_name(Some("tools"));
     }
     updates_page_ref.set_badge_number(0);
     let view_switcher_bar = adw::ViewSwitcherBar::new();

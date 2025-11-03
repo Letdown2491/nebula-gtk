@@ -8,7 +8,9 @@ use libadwaita as adw;
 
 use adw::prelude::*;
 use gtk::glib;
+use gtk::prelude::{ListBoxRowExt, WidgetExt};
 
+use crate::categories::icon_resource_for_package;
 use crate::details::DiscoverDetail;
 use crate::helpers::{
     clear_listbox, detail_download_bytes, format_relative_time, populate_spotlight_list,
@@ -520,6 +522,12 @@ impl AppController {
         row.set_title_lines(1);
         row.set_subtitle_lines(2);
 
+        let icon = gtk::Image::from_resource(icon_resource_for_package(&pkg.name));
+        icon.set_pixel_size(32);
+        icon.set_margin_end(12);
+        icon.set_valign(gtk::Align::Center);
+        row.add_prefix(&icon);
+
         let button = gtk::Button::builder().width_request(140).build();
         button.set_valign(gtk::Align::Center);
 
@@ -1006,6 +1014,7 @@ impl AppController {
 
     pub(crate) fn on_discover_detail_close(self: &Rc<Self>) {
         self.widgets.discover.list.unselect_all();
+        self.clear_spotlight_recent_selection();
         self.clear_discover_details(false);
     }
 
@@ -1041,7 +1050,6 @@ impl AppController {
 
         self.update_spotlight_installed_flags();
         self.update_spotlight_views();
-        self.refresh_active_spotlight_category();
         self.update_discover_layout();
     }
 
@@ -1343,6 +1351,9 @@ impl AppController {
         let Some(row) = row else {
             return;
         };
+        if !row.is_selected() {
+            return;
+        }
         self.activate_spotlight_recent_row(&row);
     }
 
@@ -1396,6 +1407,10 @@ impl AppController {
                 .set_reveal_child(true);
             self.widgets
                 .discover
+                .spotlight_recent_detail_revealer
+                .set_can_target(true);
+            self.widgets
+                .discover
                 .spotlight_recent_detail_container
                 .set_visible(true);
             self.update_discover_details();
@@ -1434,26 +1449,22 @@ impl AppController {
             .set_reveal_child(false);
         self.widgets
             .discover
+            .spotlight_recent_detail_revealer
+            .set_can_target(false);
+        self.widgets
+            .discover
             .spotlight_recent_detail_container
             .set_visible(false);
 
-        let recent_items = {
+        let has_items = {
             let state = self.state.borrow();
-            state.spotlight_recent.clone()
+            !state.spotlight_recent.is_empty()
         };
-        populate_spotlight_list(&self.widgets.discover.spotlight_recent_list, &recent_items);
 
-        if recent_items.is_empty() {
-            self.widgets
-                .discover
-                .spotlight_recent_stack
-                .set_visible_child_name("placeholder");
-        } else {
-            self.widgets
-                .discover
-                .spotlight_recent_stack
-                .set_visible_child_name("list");
-        }
+        self.widgets
+            .discover
+            .spotlight_recent_stack
+            .set_visible_child_name(if has_items { "list" } else { "placeholder" });
 
         self.update_spotlight_recent_detail();
         self.update_discover_details();
@@ -1520,6 +1531,10 @@ impl AppController {
                 .set_reveal_child(true);
             self.widgets
                 .discover
+                .spotlight_recent_detail_revealer
+                .set_can_target(true);
+            self.widgets
+                .discover
                 .spotlight_recent_detail_container
                 .set_visible(true);
             self.update_spotlight_recent_detail();
@@ -1538,6 +1553,10 @@ impl AppController {
                 .set_reveal_child(false);
             self.widgets
                 .discover
+                .spotlight_recent_detail_revealer
+                .set_can_target(false);
+            self.widgets
+                .discover
                 .spotlight_recent_detail_container
                 .set_visible(false);
         } else {
@@ -1553,6 +1572,10 @@ impl AppController {
                 .discover
                 .spotlight_recent_detail_revealer
                 .set_reveal_child(false);
+            self.widgets
+                .discover
+                .spotlight_recent_detail_revealer
+                .set_can_target(false);
             self.widgets
                 .discover
                 .spotlight_recent_detail_container

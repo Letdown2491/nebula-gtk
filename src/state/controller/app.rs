@@ -1183,60 +1183,64 @@ impl AppController {
         content.set_margin_top(20);
         content.set_margin_bottom(20);
         content.set_spacing(12);
+        content.set_halign(gtk::Align::Center);
+
+        let logo = gtk::Image::from_resource("/tech/geektoshi/Nebula/icons/nebula.png");
+        logo.set_pixel_size(64);
+        logo.set_halign(gtk::Align::Center);
 
         let title = gtk::Label::builder()
-            .label("Nebula")
-            .halign(gtk::Align::Start)
+            .label(&format!("Nebula {}", version))
+            .halign(gtk::Align::Center)
             .build();
-        title.add_css_class("title-3");
-
-        let version_label = gtk::Label::builder()
-            .label(&format!("Version {}", version))
-            .halign(gtk::Align::Start)
-            .build();
-        version_label.add_css_class("dim-label");
+        title.add_css_class("title-2");
 
         let description = gtk::Label::builder()
             .label("Nebula makes it easy to discover, install, and update software on Void Linux.")
             .wrap(true)
             .wrap_mode(pango::WrapMode::WordChar)
-            .halign(gtk::Align::Start)
+            .halign(gtk::Align::Center)
             .build();
-        description.set_xalign(0.0);
+        description.set_xalign(0.5);
 
-        let links_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(6)
-            .halign(gtk::Align::Start)
+        let links_row = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(12)
+            .halign(gtk::Align::Center)
             .build();
 
         let make_link = |text: &str, url: &str| {
             let link = gtk::LinkButton::builder()
                 .label(text)
                 .uri(url)
-                .halign(gtk::Align::Start)
+                .halign(gtk::Align::Center)
                 .build();
             link.add_css_class("flat");
             link
         };
 
-        links_box.append(&make_link(
+        links_row.append(&make_link(
             "Project website",
-            "https://github.com/geektoshi/nebula",
-        ));
-        links_box.append(&make_link(
-            "Report an issue",
-            "https://github.com/geektoshi/nebula/issues",
-        ));
-        links_box.append(&make_link(
-            "Support & discussions",
-            "https://github.com/geektoshi/nebula/discussions",
+            "https://github.com/Letdown2491/nebula-gtk",
         ));
 
+        let separator = gtk::Label::builder()
+            .label("/")
+            .halign(gtk::Align::Center)
+            .build();
+        separator.add_css_class("dim-label");
+
+        links_row.append(&separator);
+        links_row.append(&make_link(
+            "Report an issue",
+            "https://github.com/Letdown2491/nebula-gtk/issues",
+        ));
+
+        content.set_halign(gtk::Align::Center);
+        content.append(&logo);
         content.append(&title);
-        content.append(&version_label);
         content.append(&description);
-        content.append(&links_box);
+        content.append(&links_row);
 
         dialog.add_button("Close", gtk::ResponseType::Close);
         dialog.connect_response(|dialog, _| dialog.close());

@@ -29,8 +29,14 @@ pub(crate) struct AppWidgets {
 }
 
 pub(crate) fn build_ui(app: &adw::Application) {
+    #[cfg(not(nebula_skip_gresource))]
     gio::resources_register_include!("nebula.gresource")
         .expect("Failed to register embedded resources");
+
+    #[cfg(nebula_skip_gresource)]
+    {
+        eprintln!("Nebula running without embedded resources (SKIP_GRESOURCE=1)");
+    }
     if let Some(display) = gdk::Display::default() {
         let theme = gtk::IconTheme::for_display(&display);
         theme.add_resource_path("/tech/geektoshi/Nebula/icons");

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Nebula
+Comment=Explore and manage Void Linux packages
+Exec=/usr/libexec/nebula-gtk
+Icon=nebula
+Terminal=false
+StartupNotify=true
+X-GNOME-Application-ID=tech.geektoshi.Nebula
+Categories=System;PackageManager;
+Keywords=void;packages;store;
+X-GNOME-UsesNotifications=true

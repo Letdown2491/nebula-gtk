@@ -56,7 +56,7 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
         .build();
 
     let title_label = gtk::Label::builder()
-        .label("Keep things running smoothly")
+        .label("Tools for package maintenance")
         .halign(gtk::Align::Start)
         .xalign(0.0)
         .wrap(true)
@@ -65,7 +65,9 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
     title_label.add_css_class("title-2");
 
     let subtitle_label = gtk::Label::builder()
-        .label("A handful of maintenance helpers for the moments when Nebula needs a bit of attention.")
+        .label(
+            "This page provides easy access to XBPS tooling for package cleaning and maintenance.",
+        )
         .halign(gtk::Align::Start)
         .xalign(0.0)
         .wrap(true)
@@ -78,13 +80,13 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
     content.append(&header_box);
 
     let quick_group = adw::PreferencesGroup::builder()
-        .title("Quick tidy-up")
-        .description("Short chores that keep Void Linux neat without getting in the way.")
+        .title("Package Cleanup")
+        .description("Cleanup utilities to keep old packages from clogging up your system.")
         .build();
 
     let (cleanup_panel, cleanup_button, cleanup_status, cleanup_spinner) = build_tools_action_row(
         "Remove orphaned packages",
-        "Sweep out dependencies nothing else needs.",
+        "Clean out unused dependencies.",
         "Run cleanup",
         "Runs \"xbps-remove -O\" to prune orphaned packages.",
         maintenance_copy(MaintenanceTask::Cleanup).idle_text,
@@ -121,7 +123,7 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
 
     let alternatives_group = adw::PreferencesGroup::builder()
         .title("Alternatives")
-        .description("Peek at which providers are currently registered before you switch defaults.")
+        .description("See which providers are currently registered before you switch defaults.")
         .build();
 
     let (alternatives_panel, alternatives_button, alternatives_status, alternatives_spinner) =

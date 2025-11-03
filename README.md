@@ -11,16 +11,24 @@ Nebula is a GTK/libadwaita front-end for browsing and managing Void Linux packag
 ## Quick Start
 
 ```sh
-cargo run
+cargo run --bin nebula-gtk
 ```
 
 ## Production Build
 
 ```sh
-cargo build --release
+cargo build --release --bin nebula-gtk
 ```
 
 The optimized binary is written to `target/release/nebula-gtk`. Use `cargo run --release` if you want to execute the release build directly after compiling.
+
+## System Install
+
+```sh
+sudo ./setup.sh install
+```
+
+The helper script builds the release binary, installs it into `/usr/libexec`, registers the desktop entry, and copies the icon set into the standard `hicolor` theme directories. Use `sudo ./setup.sh uninstall` to remove those assets.
 
 ## Category Data
 

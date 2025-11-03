@@ -130,6 +130,9 @@ pub(crate) fn build_ui(app: &adw::Application) {
     let preferences_action = gio::SimpleAction::new("preferences", None);
     app.add_action(&preferences_action);
 
+    let mirrors_action = gio::SimpleAction::new("mirrors", None);
+    app.add_action(&mirrors_action);
+
     let show_updates_action = gio::SimpleAction::new("show-updates", None);
     app.add_action(&show_updates_action);
 
@@ -234,6 +237,13 @@ pub(crate) fn build_ui(app: &adw::Application) {
     prefs_row.set_action_name(Some("app.preferences"));
     menu_list.append(&prefs_row);
 
+    let mirrors_row = adw::ActionRow::builder()
+        .title("Mirrors")
+        .activatable(true)
+        .build();
+    mirrors_row.set_action_name(Some("app.mirrors"));
+    menu_list.append(&mirrors_row);
+
     let about_row = adw::ActionRow::builder()
         .title("About Nebula")
         .activatable(true)
@@ -327,6 +337,7 @@ pub(crate) fn build_ui(app: &adw::Application) {
 
     controller.setup_connections();
     controller.apply_start_page_preference();
+    controller.initialize_mirrors();
 
     {
         let controller_weak = Rc::downgrade(&controller);
@@ -345,6 +356,17 @@ pub(crate) fn build_ui(app: &adw::Application) {
             popover_clone.popdown();
             if let Some(controller) = controller_weak.upgrade() {
                 controller.show_preferences();
+            }
+        });
+    }
+
+    {
+        let controller_weak = Rc::downgrade(&controller);
+        let popover_clone = popover.clone();
+        mirrors_action.connect_activate(move |_, _| {
+            popover_clone.popdown();
+            if let Some(controller) = controller_weak.upgrade() {
+                controller.show_mirrors();
             }
         });
     }

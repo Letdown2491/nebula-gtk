@@ -11,3 +11,4 @@ pub(crate) use commands::{
     run_xbps_update_package, run_xbps_update_packages, summarize_output_line, truncate_for_summary,
 };
 pub(crate) use parser::split_package_identifier;
+pub(crate) use privilege::run_privileged_command;

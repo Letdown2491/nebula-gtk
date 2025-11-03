@@ -76,6 +76,7 @@ pub(crate) struct AppState {
     pub(crate) maintenance_pkgdb: MaintenanceActionState,
     pub(crate) maintenance_reconfigure: MaintenanceActionState,
     pub(crate) maintenance_alternatives: MaintenanceActionState,
+    pub(crate) selected_mirror_ids: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]

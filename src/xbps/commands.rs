@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::process::Command;
 
+use crate::mirrors::{configure_query_command, install_repository_args};
 use crate::types::{CommandResult, DependencyInfo, PackageInfo, lowercase_cache};
 
 use super::parser::{
@@ -10,8 +11,11 @@ use super::parser::{
 use super::privilege::run_privileged_command;
 
 pub(crate) fn run_xbps_query_dependencies(package: &str) -> Result<Vec<DependencyInfo>, String> {
-    let output = Command::new("xbps-query")
-        .args(["-R", "--show", package])
+    let mut command = Command::new("xbps-query");
+    command.arg("-R");
+    configure_query_command(&mut command);
+    command.args(["--show", package]);
+    let output = command
         .output()
         .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
 
@@ -87,8 +91,11 @@ pub(crate) fn run_xbps_query_dependencies(package: &str) -> Result<Vec<Dependenc
 }
 
 pub(crate) fn run_xbps_query_search(query: &str) -> Result<Vec<PackageInfo>, String> {
-    let output = Command::new("xbps-query")
-        .args(["-R", "--regex", "-s", query])
+    let mut command = Command::new("xbps-query");
+    command.arg("-R");
+    configure_query_command(&mut command);
+    command.args(["--regex", "-s", query]);
+    let output = command
         .output()
         .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
 
@@ -117,7 +124,11 @@ pub(crate) fn run_xbps_list_installed() -> Result<Vec<PackageInfo>, String> {
 }
 
 pub(crate) fn run_xbps_install(package: &str) -> Result<CommandResult, String> {
-    run_privileged_command("xbps-install", &["-y", package])
+    let mut args = install_repository_args();
+    args.push("-y".to_string());
+    args.push(package.to_string());
+    let arg_refs: Vec<&str> = args.iter().map(|arg| arg.as_str()).collect();
+    run_privileged_command("xbps-install", &arg_refs)
 }
 
 pub(crate) fn run_xbps_remove(package: &str) -> Result<CommandResult, String> {
@@ -175,8 +186,11 @@ pub(crate) fn query_pkgsize_bytes(package: &str) -> Result<Option<u64>, String> 
 }
 
 fn query_size_property(package: &str, property: &str) -> Result<Option<u64>, String> {
-    let output = Command::new("xbps-query")
-        .args(["-p", property, package])
+    let mut command = Command::new("xbps-query");
+    command.arg("-R");
+    configure_query_command(&mut command);
+    command.args(["-p", property, package]);
+    let output = command
         .output()
         .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
 
@@ -287,6 +301,7 @@ fn query_properties_from_show(
     let mut command = Command::new("xbps-query");
     if remote {
         command.arg("-R");
+        configure_query_command(&mut command);
     } else {
         command.arg("-S");
     }
@@ -365,8 +380,11 @@ fn normalize_property_text(value: &str) -> String {
 }
 
 pub(crate) fn query_repo_package_info(name: &str) -> Result<PackageInfo, String> {
-    let output = Command::new("xbps-query")
-        .args(["-R", name])
+    let mut command = Command::new("xbps-query");
+    command.arg("-R");
+    configure_query_command(&mut command);
+    command.arg(name);
+    let output = command
         .output()
         .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
 
@@ -514,10 +532,15 @@ pub(crate) fn run_xbps_alternatives_list() -> Result<CommandResult, String> {
 }
 
 pub(crate) fn run_xbps_check_updates() -> Result<Vec<PackageInfo>, String> {
-    let output = Command::new("xbps-install")
-        .args(["-Sun"])
-        .env("NO_COLOR", "1")
-        .env("XBPS_INSTALL_VERBOSE", "2")
+    let repo_args = install_repository_args();
+    let mut command = Command::new("xbps-install");
+    command.env("NO_COLOR", "1");
+    command.env("XBPS_INSTALL_VERBOSE", "2");
+    if !repo_args.is_empty() {
+        command.args(&repo_args);
+    }
+    command.arg("-Sun");
+    let output = command
         .output()
         .map_err(|err| format!("Failed to launch xbps-install: {}", err))?;
 
@@ -532,11 +555,20 @@ pub(crate) fn run_xbps_check_updates() -> Result<Vec<PackageInfo>, String> {
 }
 
 pub(crate) fn run_xbps_update_all() -> Result<CommandResult, String> {
-    run_privileged_command("xbps-install", &["-y", "-Su"])
+    let mut args = install_repository_args();
+    args.push("-y".to_string());
+    args.push("-Su".to_string());
+    let arg_refs: Vec<&str> = args.iter().map(|arg| arg.as_str()).collect();
+    run_privileged_command("xbps-install", &arg_refs)
 }
 
 pub(crate) fn run_xbps_update_package(package: &str) -> Result<CommandResult, String> {
-    run_privileged_command("xbps-install", &["-y", "-u", package])
+    let mut args = install_repository_args();
+    args.push("-y".to_string());
+    args.push("-u".to_string());
+    args.push(package.to_string());
+    let arg_refs: Vec<&str> = args.iter().map(|arg| arg.as_str()).collect();
+    run_privileged_command("xbps-install", &arg_refs)
 }
 
 pub(crate) fn run_xbps_update_packages(packages: &[String]) -> Result<CommandResult, String> {
@@ -548,10 +580,14 @@ pub(crate) fn run_xbps_update_packages(packages: &[String]) -> Result<CommandRes
         });
     }
 
-    let mut args = vec!["-y", "-u"];
-    let package_refs: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
-    args.extend(package_refs);
-    run_privileged_command("xbps-install", &args)
+    let mut args = install_repository_args();
+    args.push("-y".to_string());
+    args.push("-u".to_string());
+    for pkg in packages {
+        args.push(pkg.clone());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(|arg| arg.as_str()).collect();
+    run_privileged_command("xbps-install", &arg_refs)
 }
 
 fn parse_updates_output(text: &str) -> Vec<PackageInfo> {

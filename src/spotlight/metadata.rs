@@ -8,6 +8,7 @@ use feed_rs::parser;
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, USER_AGENT};
 
+use crate::mirrors::configure_query_command;
 use crate::xbps::split_package_identifier;
 
 #[derive(Clone, Debug)]
@@ -109,8 +110,11 @@ fn fetch_remote_spotlight_metadata_from_feed() -> Result<Vec<RemotePackageMetada
 }
 
 fn fetch_remote_spotlight_metadata_with_xbps() -> Result<Vec<RemotePackageMetadata>, String> {
-    let listings = Command::new("xbps-query")
-        .args(["-R", "--regex", "-s", "."])
+    let mut listings_cmd = Command::new("xbps-query");
+    listings_cmd.arg("-R");
+    configure_query_command(&mut listings_cmd);
+    listings_cmd.args(["--regex", "-s", "."]);
+    let listings = listings_cmd
         .output()
         .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
 
@@ -119,8 +123,11 @@ fn fetch_remote_spotlight_metadata_with_xbps() -> Result<Vec<RemotePackageMetada
         return Err(stderr.trim().to_string());
     }
 
-    let build_dates = Command::new("xbps-query")
-        .args(["-R", "--regex", "-s", ".", "-p", "build-date"])
+    let mut build_cmd = Command::new("xbps-query");
+    build_cmd.arg("-R");
+    configure_query_command(&mut build_cmd);
+    build_cmd.args(["--regex", "-s", ".", "-p", "build-date"]);
+    let build_dates = build_cmd
         .output()
         .map_err(|err| format!("Failed to launch xbps-query: {}", err))?;
 

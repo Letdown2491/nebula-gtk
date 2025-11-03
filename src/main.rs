@@ -1,6 +1,7 @@
 mod categories;
 mod details;
 mod helpers;
+mod mirrors;
 mod settings;
 mod spotlight;
 mod state;

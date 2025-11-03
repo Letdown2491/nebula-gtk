@@ -73,7 +73,7 @@ impl ThemePreference {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppSettings {
     #[serde(default)]
     pub window_width: Option<i32>,
@@ -95,6 +95,8 @@ pub struct AppSettings {
     pub theme_preference: ThemePreference,
     #[serde(default = "default_notify_updates")]
     pub notify_updates: bool,
+    #[serde(default)]
+    pub mirror_selection: Vec<String>,
 }
 
 fn default_auto_check_enabled() -> bool {
@@ -122,6 +124,7 @@ impl Default for AppSettings {
             confirm_remove: default_confirm_pref(),
             theme_preference: ThemePreference::System,
             notify_updates: default_notify_updates(),
+            mirror_selection: Vec::new(),
         }
     }
 }

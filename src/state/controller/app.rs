@@ -10,6 +10,10 @@ use adw::prelude::*;
 use gtk::glib::{self, Propagation};
 use gtk::pango;
 
+use crate::mirrors::{
+    default_mirror_id, detect_active_repositories, find_mirror, humanize_base_url, map_urls_to_ids,
+    set_active_mirrors_by_ids, tier1_mirrors, tor_mirrors, write_repository_config,
+};
 use crate::settings::{AppSettings, StartPagePreference, UpdateCheckFrequency, save_app_settings};
 use crate::spotlight::{
     SpotlightCategory, build_category_results, compute_spotlight_sections,
@@ -32,6 +36,7 @@ pub(crate) struct AppController {
     pub(crate) installed_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) discover_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) preferences_window: RefCell<Option<adw::PreferencesWindow>>,
+    pub(crate) mirrors_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) about_dialog: RefCell<Option<gtk::Dialog>>,
 }
 
@@ -74,6 +79,7 @@ impl AppController {
             installed_buttons: RefCell::new(Vec::new()),
             discover_buttons: RefCell::new(Vec::new()),
             preferences_window: RefCell::new(None),
+            mirrors_window: RefCell::new(None),
             about_dialog: RefCell::new(None),
         }
     }
@@ -964,6 +970,39 @@ impl AppController {
         }
     }
 
+    pub(crate) fn initialize_mirrors(self: &Rc<Self>) {
+        let stored_ids = {
+            let settings = self.settings.borrow();
+            settings
+                .mirror_selection
+                .iter()
+                .filter(|id| find_mirror(id.as_str()).is_some())
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        let detected_ids = detect_active_repositories()
+            .ok()
+            .map(|urls| map_urls_to_ids(&urls))
+            .unwrap_or_default();
+
+        let mut initial_ids = if !detected_ids.is_empty() {
+            detected_ids
+        } else {
+            stored_ids.clone()
+        };
+
+        initial_ids.retain(|id| find_mirror(id.as_str()).is_some());
+
+        if initial_ids.is_empty() {
+            initial_ids.push(default_mirror_id().to_string());
+        }
+
+        if let Err(err) = self.apply_mirror_selection(initial_ids, true, false) {
+            eprintln!("Failed to initialize mirrors: {}", err);
+        }
+    }
+
     pub(crate) fn show_toast(&self, message: &str) {
         let toast = adw::Toast::builder().title(message).timeout(5).build();
         self.widgets.toast_overlay.add_toast(toast);
@@ -988,6 +1027,209 @@ impl AppController {
             state.footer_message = message.map(|m| m.to_string());
         }
         self.update_footer_text();
+    }
+
+    pub(crate) fn show_mirrors(self: &Rc<Self>) {
+        if let Some(window) = self.mirrors_window.borrow().as_ref() {
+            window.present();
+            return;
+        }
+
+        let window = adw::PreferencesWindow::builder()
+            .transient_for(&self.window)
+            .modal(true)
+            .title("Mirrors")
+            .build();
+        window.set_application(Some(&self.app));
+        self.mirrors_window.replace(Some(window.clone()));
+
+        {
+            let controller = Rc::downgrade(self);
+            window.connect_close_request(move |_| {
+                if let Some(controller) = controller.upgrade() {
+                    controller.mirrors_window.replace(None);
+                }
+                Propagation::Proceed
+            });
+        }
+
+        {
+            let controller = Rc::downgrade(self);
+            window.connect_destroy(move |_| {
+                if let Some(controller) = controller.upgrade() {
+                    controller.mirrors_window.replace(None);
+                }
+            });
+        }
+
+        let page = adw::PreferencesPage::builder()
+            .title("Repository Mirrors")
+            .build();
+
+        let tier_group = adw::PreferencesGroup::builder()
+            .title("Tier 1 Mirrors")
+            .description("Select the primary Void Linux mirrors Nebula should use.")
+            .build();
+        let tor_group = adw::PreferencesGroup::builder()
+            .title("Tor Mirrors")
+            .description("Requires the tor package. Follow https://docs.voidlinux.org/xbps/repositories/mirrors/tor.html before enabling these mirrors.")
+            .build();
+
+        {
+            let selected = self.state.borrow().selected_mirror_ids.clone();
+            let controller = Rc::downgrade(self);
+            for mirror in tier1_mirrors() {
+                let controller = controller.clone();
+                let subtitle = humanize_base_url(mirror);
+                let row = adw::ActionRow::builder()
+                    .title(mirror.region)
+                    .subtitle(&subtitle)
+                    .activatable(true)
+                    .build();
+                let check = gtk::CheckButton::builder()
+                    .valign(gtk::Align::Center)
+                    .build();
+                if selected.iter().any(|id| id == mirror.id) {
+                    check.set_active(true);
+                }
+                let mirror_id = mirror.id.to_string();
+                check.connect_toggled(move |btn| {
+                    if let Some(controller) = controller.upgrade() {
+                        controller.handle_mirror_toggle(&mirror_id, btn.is_active(), btn);
+                    }
+                });
+                row.add_suffix(&check);
+                row.set_activatable_widget(Some(&check));
+                tier_group.add(&row);
+            }
+        }
+
+        {
+            let selected = self.state.borrow().selected_mirror_ids.clone();
+            let controller = Rc::downgrade(self);
+            for mirror in tor_mirrors() {
+                let controller = controller.clone();
+                let subtitle = humanize_base_url(mirror);
+                let row = adw::ActionRow::builder()
+                    .title(mirror.region)
+                    .subtitle(&subtitle)
+                    .activatable(true)
+                    .build();
+                let check = gtk::CheckButton::builder()
+                    .valign(gtk::Align::Center)
+                    .build();
+                if selected.iter().any(|id| id == mirror.id) {
+                    check.set_active(true);
+                }
+                let mirror_id = mirror.id.to_string();
+                check.connect_toggled(move |btn| {
+                    if let Some(controller) = controller.upgrade() {
+                        controller.handle_mirror_toggle(&mirror_id, btn.is_active(), btn);
+                    }
+                });
+                row.add_suffix(&check);
+                row.set_activatable_widget(Some(&check));
+                tor_group.add(&row);
+            }
+        }
+
+        page.add(&tier_group);
+        page.add(&tor_group);
+        window.add(&page);
+        window.present();
+    }
+
+    pub(crate) fn handle_mirror_toggle(
+        self: &Rc<Self>,
+        mirror_id: &str,
+        active: bool,
+        button: &gtk::CheckButton,
+    ) {
+        let mut selected = self.state.borrow().selected_mirror_ids.clone();
+        let mut changed = false;
+
+        if active {
+            if !selected.iter().any(|id| id == mirror_id) {
+                selected.push(mirror_id.to_string());
+                changed = true;
+            }
+        } else {
+            if selected.len() == 1 && selected.iter().any(|id| id == mirror_id) {
+                self.restore_check_button(button, true);
+                return;
+            }
+            let count_before = selected.len();
+            selected.retain(|id| id != mirror_id);
+            if selected.is_empty() {
+                self.restore_check_button(button, true);
+                return;
+            }
+            changed = count_before != selected.len();
+        }
+
+        if !changed {
+            return;
+        }
+
+        match self.apply_mirror_selection(selected.clone(), true, true) {
+            Ok(_) => {
+                self.show_toast("Mirrors updated.");
+            }
+            Err(err) => {
+                self.show_error_dialog("Mirror Update Failed", &err);
+                self.restore_check_button(button, !active);
+            }
+        }
+    }
+
+    fn restore_check_button(&self, button: &gtk::CheckButton, active: bool) {
+        let weak = button.downgrade();
+        glib::idle_add_local(move || {
+            if let Some(button) = weak.upgrade() {
+                button.set_active(active);
+            }
+            glib::ControlFlow::Break
+        });
+    }
+
+    fn apply_mirror_selection(
+        self: &Rc<Self>,
+        ids: Vec<String>,
+        persist_settings: bool,
+        update_config: bool,
+    ) -> Result<(), String> {
+        if ids.is_empty() {
+            return Err("At least one mirror must remain selected.".to_string());
+        }
+
+        if update_config {
+            write_repository_config(&ids)?;
+        }
+
+        if persist_settings {
+            let mut snapshot = {
+                let settings_ref = self.settings.borrow();
+                settings_ref.clone()
+            };
+            snapshot.mirror_selection = ids.clone();
+            save_app_settings(&snapshot)?;
+            {
+                let mut settings = self.settings.borrow_mut();
+                *settings = snapshot;
+            }
+        } else {
+            let mut settings = self.settings.borrow_mut();
+            settings.mirror_selection = ids.clone();
+        }
+
+        {
+            let mut state = self.state.borrow_mut();
+            state.selected_mirror_ids = ids.clone();
+        }
+
+        set_active_mirrors_by_ids(&ids);
+
+        Ok(())
     }
 
     pub(crate) fn show_preferences(self: &Rc<Self>) {

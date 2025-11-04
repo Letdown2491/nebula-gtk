@@ -1482,7 +1482,6 @@ impl AppController {
                     if withdraw_notification {
                         self.withdraw_updates_notification();
                     }
-                    self.refresh_updates(true);
                 } else {
                     self.set_packages_status(&packages, UpdateStatus::Failed);
                     let mut detail = command.stderr.trim();

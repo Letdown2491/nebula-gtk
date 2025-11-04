@@ -2,6 +2,12 @@
 
 Nebula is a GTK/libadwaita front-end for browsing and managing Void Linux packages, using the XBPS tooling in the background.
 
+## Screenshots
+
+| ![Discover page](assets/screenshots/1-discover.png) | ![App Details](assets/screenshots/8-dependencies.png) |
+| --- | --- |
+| ![Tools](assets/screenshots/4-tools.png) | ![App Prefences](assets/screenshots/5-preferences.png) |
+
 ## Requirements
 
 - A Void Linux installation

@@ -14,6 +14,7 @@ pub(crate) struct UpdatesWidgets {
     pub(crate) placeholder_label: gtk::Label,
     pub(crate) check_button: gtk::Button,
     pub(crate) refresh_button: gtk::Button,
+    pub(crate) logs_button: gtk::Button,
     pub(crate) update_all_button: gtk::Button,
     pub(crate) spinner: gtk::Spinner,
     pub(crate) summary_label: gtk::Label,
@@ -109,6 +110,13 @@ pub(crate) fn build_page() -> (gtk::Box, UpdatesWidgets) {
     refresh_button.set_focus_on_click(false);
     refresh_button.add_css_class("flat");
 
+    let logs_button = gtk::Button::builder()
+        .label("Logs")
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .build();
+    logs_button.add_css_class("flat");
+
     let update_all_button = gtk::Button::builder()
         .label("Update All")
         .halign(gtk::Align::End)
@@ -127,6 +135,7 @@ pub(crate) fn build_page() -> (gtk::Box, UpdatesWidgets) {
     controls_row.set_halign(gtk::Align::Fill);
     controls_row.append(&refresh_button);
     controls_row.append(&summary_row);
+    controls_row.append(&logs_button);
     controls_row.append(&update_all_button);
 
     let list = gtk::ListBox::new();
@@ -463,6 +472,7 @@ pub(crate) fn build_page() -> (gtk::Box, UpdatesWidgets) {
         placeholder_label,
         check_button,
         refresh_button,
+        logs_button,
         update_all_button,
         spinner,
         summary_label,

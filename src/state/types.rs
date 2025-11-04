@@ -31,6 +31,8 @@ pub(crate) struct AppState {
     pub(crate) installed_row_buttons_visible: bool,
     pub(crate) available_updates: Vec<PackageInfo>,
     pub(crate) available_update_names: HashSet<String>,
+    pub(crate) update_statuses: HashMap<String, UpdateStatus>,
+    pub(crate) update_log: Vec<String>,
     pub(crate) updates_loading: bool,
     pub(crate) update_in_progress: bool,
     pub(crate) selected_updates: HashSet<String>,
@@ -80,6 +82,47 @@ pub(crate) struct AppState {
     pub(crate) selected_mirror_ids: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum UpdateStatus {
+    Queued,
+    Preparing,
+    Downloading,
+    Installing,
+    Verifying,
+    Completed,
+    Failed,
+}
+
+impl UpdateStatus {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            UpdateStatus::Queued => "Queued",
+            UpdateStatus::Preparing => "Preparing",
+            UpdateStatus::Downloading => "Downloading",
+            UpdateStatus::Installing => "Installing",
+            UpdateStatus::Verifying => "Verifying",
+            UpdateStatus::Completed => "Completed",
+            UpdateStatus::Failed => "Failed",
+        }
+    }
+
+    pub(crate) fn precedence(self) -> u8 {
+        match self {
+            UpdateStatus::Queued => 0,
+            UpdateStatus::Preparing => 1,
+            UpdateStatus::Downloading => 2,
+            UpdateStatus::Installing => 3,
+            UpdateStatus::Verifying => 4,
+            UpdateStatus::Completed => 5,
+            UpdateStatus::Failed => 6,
+        }
+    }
+
+    pub(crate) fn should_replace(self, current: UpdateStatus) -> bool {
+        matches!(self, UpdateStatus::Failed) || self.precedence() >= current.precedence()
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub(crate) enum DiscoverMode {
     #[default]
@@ -125,6 +168,9 @@ pub(crate) enum AppMessage {
         packages: Vec<String>,
         result: Result<CommandResult, String>,
         all: bool,
+    },
+    UpdateLogLine {
+        line: String,
     },
     DiscoverDetailLoaded {
         package: String,

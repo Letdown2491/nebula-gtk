@@ -1864,7 +1864,9 @@ impl AppController {
                 updated_value.set_visible(false);
                 updated_value.set_text("");
                 update_label.set_visible(false);
-                let fallback_bytes = pkg.download_bytes.or_else(|| detail_download_bytes(&pkg.name));
+                let fallback_bytes = pkg
+                    .download_bytes
+                    .or_else(|| detail_download_bytes(&pkg.name));
                 set_download_label(
                     download_value,
                     None,
@@ -1890,7 +1892,9 @@ impl AppController {
                 updated_value.set_visible(false);
                 updated_value.set_text("");
                 update_label.set_visible(false);
-                let fallback_bytes = pkg.download_bytes.or_else(|| detail_download_bytes(&pkg.name));
+                let fallback_bytes = pkg
+                    .download_bytes
+                    .or_else(|| detail_download_bytes(&pkg.name));
                 set_download_label(
                     download_value,
                     None,
@@ -1916,7 +1920,9 @@ impl AppController {
                 updated_value.set_visible(false);
                 updated_value.set_text("");
                 update_label.set_visible(false);
-                let fallback_bytes = pkg.download_bytes.or_else(|| detail_download_bytes(&pkg.name));
+                let fallback_bytes = pkg
+                    .download_bytes
+                    .or_else(|| detail_download_bytes(&pkg.name));
                 set_download_label(
                     download_value,
                     None,

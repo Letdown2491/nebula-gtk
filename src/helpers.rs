@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
-use gtk::glib;
 use glib::prelude::Cast;
+use gtk::glib;
 use gtk4 as gtk;
 use libadwaita as adw;
 use libadwaita::prelude::*;

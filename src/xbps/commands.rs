@@ -554,42 +554,6 @@ pub(crate) fn run_xbps_check_updates() -> Result<Vec<PackageInfo>, String> {
     Ok(parse_updates_output(&cleaned))
 }
 
-pub(crate) fn run_xbps_update_all() -> Result<CommandResult, String> {
-    let mut args = install_repository_args();
-    args.push("-y".to_string());
-    args.push("-Su".to_string());
-    let arg_refs: Vec<&str> = args.iter().map(|arg| arg.as_str()).collect();
-    run_privileged_command("xbps-install", &arg_refs)
-}
-
-pub(crate) fn run_xbps_update_package(package: &str) -> Result<CommandResult, String> {
-    let mut args = install_repository_args();
-    args.push("-y".to_string());
-    args.push("-u".to_string());
-    args.push(package.to_string());
-    let arg_refs: Vec<&str> = args.iter().map(|arg| arg.as_str()).collect();
-    run_privileged_command("xbps-install", &arg_refs)
-}
-
-pub(crate) fn run_xbps_update_packages(packages: &[String]) -> Result<CommandResult, String> {
-    if packages.is_empty() {
-        return Ok(CommandResult {
-            code: Some(0),
-            stdout: String::new(),
-            stderr: String::new(),
-        });
-    }
-
-    let mut args = install_repository_args();
-    args.push("-y".to_string());
-    args.push("-u".to_string());
-    for pkg in packages {
-        args.push(pkg.clone());
-    }
-    let arg_refs: Vec<&str> = args.iter().map(|arg| arg.as_str()).collect();
-    run_privileged_command("xbps-install", &arg_refs)
-}
-
 fn parse_updates_output(text: &str) -> Vec<PackageInfo> {
     let mut updates = Vec::new();
 

@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
@@ -32,11 +33,14 @@ pub(crate) struct AppController {
     pub(crate) app: adw::Application,
     pub(crate) window: adw::ApplicationWindow,
     pub(crate) settings: Rc<RefCell<AppSettings>>,
-    pub(crate) update_buttons: RefCell<Vec<gtk::Button>>,
+    pub(crate) update_buttons: RefCell<HashMap<String, gtk::Button>>,
     pub(crate) discover_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) preferences_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) mirrors_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) about_dialog: RefCell<Option<gtk::Dialog>>,
+    pub(crate) update_log_dialog: RefCell<Option<gtk::Dialog>>,
+    pub(crate) update_log_buffer: RefCell<Option<gtk::TextBuffer>>,
+    pub(crate) update_log_view: RefCell<Option<gtk::TextView>>,
 }
 
 impl AppController {
@@ -75,11 +79,14 @@ impl AppController {
             state: RefCell::new(state),
             window,
             settings,
-            update_buttons: RefCell::new(Vec::new()),
+            update_buttons: RefCell::new(HashMap::new()),
             discover_buttons: RefCell::new(Vec::new()),
             preferences_window: RefCell::new(None),
             mirrors_window: RefCell::new(None),
             about_dialog: RefCell::new(None),
+            update_log_dialog: RefCell::new(None),
+            update_log_buffer: RefCell::new(None),
+            update_log_view: RefCell::new(None),
         }
     }
 
@@ -541,6 +548,16 @@ impl AppController {
                     controller.refresh_updates(false);
                 }
             ));
+        self.widgets
+            .updates
+            .logs_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.show_update_logs_dialog();
+                }
+            ));
 
         self.widgets
             .updates
@@ -961,6 +978,9 @@ impl AppController {
             } => {
                 self.finish_update(packages, result, all);
             }
+            AppMessage::UpdateLogLine { line } => {
+                self.on_update_log_line(line);
+            }
             AppMessage::DiscoverDetailLoaded { package, result } => {
                 self.finish_discover_detail(package, result);
             }
@@ -1080,6 +1100,124 @@ impl AppController {
         content.append(&scroller);
 
         dialog.present();
+    }
+
+    pub(crate) fn show_update_logs_dialog(self: &Rc<Self>) {
+        if let Some(dialog) = self.update_log_dialog.borrow().as_ref() {
+            self.refresh_update_log_buffer();
+            dialog.present();
+            return;
+        }
+
+        let dialog = gtk::Dialog::builder()
+            .transient_for(&self.window)
+            .modal(true)
+            .title("Update Logs")
+            .build();
+        dialog.set_default_size(640, 400);
+
+        let content = dialog.content_area();
+        content.set_spacing(12);
+        content.set_margin_top(12);
+        content.set_margin_bottom(12);
+        content.set_margin_start(12);
+        content.set_margin_end(12);
+
+        let scroller = gtk::ScrolledWindow::builder()
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        let text_view = gtk::TextView::builder()
+            .editable(false)
+            .cursor_visible(false)
+            .monospace(true)
+            .wrap_mode(gtk::WrapMode::Char)
+            .build();
+        let buffer = text_view.buffer();
+        self.populate_update_log_buffer(&buffer);
+        self.update_log_buffer.replace(Some(buffer.clone()));
+        scroller.set_child(Some(&text_view));
+        content.append(&scroller);
+        self.update_log_view.replace(Some(text_view.clone()));
+
+        dialog.add_button("Close", gtk::ResponseType::Close);
+        dialog.connect_response(|dialog, _| dialog.close());
+
+        {
+            let controller = Rc::downgrade(self);
+            dialog.connect_hide(move |_| {
+                if let Some(controller) = controller.upgrade() {
+                    controller.update_log_dialog.replace(None);
+                    controller.update_log_buffer.replace(None);
+                    controller.update_log_view.replace(None);
+                }
+            });
+        }
+
+        {
+            let controller = Rc::downgrade(self);
+            dialog.connect_close_request(move |_| {
+                if let Some(controller) = controller.upgrade() {
+                    controller.update_log_dialog.replace(None);
+                    controller.update_log_buffer.replace(None);
+                    controller.update_log_view.replace(None);
+                }
+                Propagation::Proceed
+            });
+        }
+
+        self.update_log_dialog.replace(Some(dialog.clone()));
+        dialog.present();
+    }
+
+    pub(crate) fn refresh_update_log_buffer(&self) {
+        if let Some(buffer) = self.update_log_buffer.borrow().as_ref() {
+            self.populate_update_log_buffer(buffer);
+        }
+    }
+
+    fn populate_update_log_buffer(&self, buffer: &gtk::TextBuffer) {
+        let text = {
+            let state = self.state.borrow();
+            if state.update_log.is_empty() {
+                "No update activity yet.".to_string()
+            } else {
+                state.update_log.join("\n")
+            }
+        };
+        buffer.set_text(&text);
+        let iter = buffer.end_iter();
+        buffer.place_cursor(&iter);
+        if let Some(view) = self.update_log_view.borrow().as_ref() {
+            let mark = buffer.create_mark(None, &iter, false);
+            view.scroll_to_mark(&mark, 0.0, true, 1.0, 1.0);
+            buffer.delete_mark(&mark);
+        }
+    }
+
+    pub(crate) fn append_update_log_buffer_line(&self, line: &str) {
+        let is_first_line = {
+            let state = self.state.borrow();
+            state.update_log.len() == 1
+        };
+
+        if let Some(buffer) = self.update_log_buffer.borrow().as_ref() {
+            if is_first_line {
+                buffer.set_text(line);
+            } else {
+                let mut iter = buffer.end_iter();
+                buffer.insert(&mut iter, "\n");
+                buffer.insert(&mut iter, line);
+            }
+
+            let iter = buffer.end_iter();
+            buffer.place_cursor(&iter);
+            if let Some(view) = self.update_log_view.borrow().as_ref() {
+                let mark = buffer.create_mark(None, &iter, false);
+                view.scroll_to_mark(&mark, 0.0, true, 1.0, 1.0);
+                buffer.delete_mark(&mark);
+            }
+        }
     }
 
     pub(crate) fn finish_install(

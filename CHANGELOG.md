@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.3 (Unreleased)
+## 1.2.3 (Work in progress)
 - Added dedicated start/end window controls plus mirrored header logos so the system layout moves the branding to the free side.
 - Wired notify::empty listeners to toggle which logo is shown as GNOME switches button placement, keeping the menu button available either way.
 

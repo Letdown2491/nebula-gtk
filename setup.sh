@@ -119,6 +119,33 @@ install_desktop_entry() {
     refresh_desktop_database
 }
 
+clean_build_artifacts() {
+    echo "Cleaning build artifacts..."
+    if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+        sudo -u "$SUDO_USER" env PROJECT_ROOT="$PROJECT_ROOT" bash -lc '
+            cd "$PROJECT_ROOT"
+            if [[ -f "$HOME/.cargo/env" ]]; then
+                source "$HOME/.cargo/env"
+            fi
+            if ! command -v cargo >/dev/null 2>&1; then
+                echo "cargo not found; install Rust toolchain" >&2
+                exit 1
+            fi
+            cargo clean
+        '
+    else
+        if [[ -f "$HOME/.cargo/env" ]]; then
+            # shellcheck disable=SC1090
+            source "$HOME/.cargo/env"
+        fi
+        if ! command -v cargo >/dev/null 2>&1; then
+            echo "cargo not found; install Rust toolchain" >&2
+            exit 1
+        fi
+        cargo clean
+    fi
+}
+
 refresh_icon_cache() {
     if command -v gtk-update-icon-cache >/dev/null 2>&1; then
         sudo gtk-update-icon-cache -f /usr/share/icons/hicolor
@@ -177,6 +204,7 @@ case "$ACTION" in
         install_binary
         install_icons
         install_desktop_entry
+        clean_build_artifacts
         ;;
     uninstall)
         cd "$PROJECT_ROOT"

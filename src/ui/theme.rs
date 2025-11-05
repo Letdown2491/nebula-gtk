@@ -1,7 +1,8 @@
 use std::f64::consts::PI;
 
 use gtk4 as gtk;
-use gtk4::prelude::{DrawingAreaExt, DrawingAreaExtManual, WidgetExt};
+use gtk4::cairo;
+use gtk4::prelude::{DrawingAreaExtManual, WidgetExt};
 use libadwaita as adw;
 
 #[derive(Clone, Copy)]
@@ -22,56 +23,46 @@ pub(crate) fn apply_theme_css_class(window: &adw::ApplicationWindow, is_dark: bo
 }
 
 pub(crate) fn build_theme_icon(mode: ThemeGlyph) -> gtk::DrawingArea {
-    let area = gtk::DrawingArea::new();
-    area.set_content_width(16);
-    area.set_content_height(16);
+    let area = gtk::DrawingArea::builder()
+        .content_width(24)
+        .content_height(24)
+        .build();
     area.set_draw_func(move |_area, cr, width, height| {
-        cr.set_line_width(2.0);
-        cr.set_source_rgb(0.2, 0.2, 0.2);
-        cr.arc(
-            width as f64 / 2.0,
-            height as f64 / 2.0,
-            (width as f64 / 2.0) - 2.0,
-            0.0,
-            2.0 * PI,
-        );
-        let _ = cr.stroke();
+        cr.set_antialias(cairo::Antialias::Best);
+        let size = f64::from(width.min(height));
+        let radius = (size / 2.0) - 2.0;
+        let cx = f64::from(width) / 2.0;
+        let cy = f64::from(height) / 2.0;
+
+        let _ = cr.save();
+        cr.arc(cx, cy, radius, 0.0, 2.0 * PI);
+        cr.clip();
 
         match mode {
             ThemeGlyph::System => {
-                cr.set_source_rgb(0.2, 0.2, 0.2);
-                cr.arc(
-                    width as f64 / 2.0,
-                    height as f64 / 2.0,
-                    (width as f64 / 2.0) - 4.0,
-                    0.0,
-                    2.0 * PI,
-                );
+                cr.set_source_rgb(1.0, 1.0, 1.0);
+                cr.rectangle(cx, cy - radius, radius, radius * 2.0);
+                let _ = cr.fill();
+
+                cr.set_source_rgb(0.1, 0.1, 0.1);
+                cr.rectangle(cx - radius, cy - radius, radius, radius * 2.0);
                 let _ = cr.fill();
             }
             ThemeGlyph::Light => {
                 cr.set_source_rgb(1.0, 1.0, 1.0);
-                cr.arc(
-                    width as f64 / 2.0,
-                    height as f64 / 2.0,
-                    (width as f64 / 2.0) - 4.0,
-                    0.0,
-                    2.0 * PI,
-                );
-                let _ = cr.fill();
+                let _ = cr.paint();
             }
             ThemeGlyph::Dark => {
                 cr.set_source_rgb(0.1, 0.1, 0.1);
-                cr.arc(
-                    width as f64 / 2.0,
-                    height as f64 / 2.0,
-                    (width as f64 / 2.0) - 4.0,
-                    0.0,
-                    2.0 * PI,
-                );
-                let _ = cr.fill();
+                let _ = cr.paint();
             }
         }
+
+        let _ = cr.restore();
+        cr.set_line_width(2.0);
+        cr.set_source_rgb(0.2, 0.2, 0.2);
+        cr.arc(cx, cy, radius, 0.0, 2.0 * PI);
+        let _ = cr.stroke();
     });
 
     area

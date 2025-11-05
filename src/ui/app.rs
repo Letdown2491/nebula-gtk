@@ -170,12 +170,17 @@ pub(crate) fn build_ui(app: &adw::Application) {
     let system_button = gtk::Button::builder().has_frame(false).build();
     system_button.add_css_class("flat");
     system_button.set_child(Some(&build_theme_icon(ThemeGlyph::System)));
+    system_button.set_tooltip_text(Some("Match system theme"));
+
     let light_button = gtk::Button::builder().has_frame(false).build();
     light_button.add_css_class("flat");
     light_button.set_child(Some(&build_theme_icon(ThemeGlyph::Light)));
+    light_button.set_tooltip_text(Some("Use light theme"));
+
     let dark_button = gtk::Button::builder().has_frame(false).build();
     dark_button.add_css_class("flat");
     dark_button.set_child(Some(&build_theme_icon(ThemeGlyph::Dark)));
+    dark_button.set_tooltip_text(Some("Use dark theme"));
 
     let theme_buttons = vec![
         ("system".to_string(), system_button.clone()),

@@ -37,7 +37,7 @@ pub(crate) struct AppController {
     pub(crate) discover_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) preferences_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) mirrors_window: RefCell<Option<adw::PreferencesWindow>>,
-    pub(crate) about_dialog: RefCell<Option<gtk::Dialog>>,
+    pub(crate) about_dialog: RefCell<Option<adw::MessageDialog>>,
     pub(crate) update_log_dialog: RefCell<Option<gtk::Dialog>>,
     pub(crate) update_log_buffer: RefCell<Option<gtk::TextBuffer>>,
     pub(crate) update_log_view: RefCell<Option<gtk::TextView>>,
@@ -1869,39 +1869,55 @@ impl AppController {
         }
 
         let version = env!("CARGO_PKG_VERSION");
-        let dialog = gtk::Dialog::builder()
+        let dialog = adw::MessageDialog::builder()
             .transient_for(&self.window)
             .modal(true)
-            .title("About Nebula")
-            .resizable(false)
             .build();
-        dialog.set_application(Some(&self.app));
 
-        let content = dialog.content_area();
-        content.set_margin_start(24);
-        content.set_margin_end(24);
-        content.set_margin_top(20);
-        content.set_margin_bottom(20);
-        content.set_spacing(12);
-        content.set_halign(gtk::Align::Center);
-
-        let logo = gtk::Image::from_resource("/tech/geektoshi/Nebula/icons/nebula.png");
-        logo.set_pixel_size(64);
-        logo.set_halign(gtk::Align::Center);
-
-        let title = gtk::Label::builder()
-            .label(&format!("Nebula {}", version))
+        let content_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
             .halign(gtk::Align::Center)
             .build();
-        title.add_css_class("title-2");
+        content_box.set_margin_top(12);
+        content_box.set_margin_bottom(12);
+        content_box.set_margin_start(16);
+        content_box.set_margin_end(16);
+
+        let logo = gtk::Image::from_resource("/tech/geektoshi/Nebula/icons/nebula.png");
+        logo.set_pixel_size(96);
+        logo.set_valign(gtk::Align::Center);
+        logo.set_halign(gtk::Align::Center);
+        content_box.append(&logo);
+
+        let title = gtk::Label::builder()
+            .label("Nebula")
+            .css_classes(["title-1"])
+            .wrap(true)
+            .wrap_mode(pango::WrapMode::WordChar)
+            .halign(gtk::Align::Center)
+            .build();
+        content_box.append(&title);
+
+        let version_label = gtk::Label::builder()
+            .label(&format!("Version {}", version))
+            .wrap(true)
+            .wrap_mode(pango::WrapMode::WordChar)
+            .css_classes(["dim-label"])
+            .halign(gtk::Align::Center)
+            .build();
+        version_label.set_xalign(0.5);
+        content_box.append(&version_label);
 
         let description = gtk::Label::builder()
             .label("Nebula is a GTK frontend for Void Linux's XBPS software tooling.")
             .wrap(true)
             .wrap_mode(pango::WrapMode::WordChar)
+            .css_classes(["dim-label"])
             .halign(gtk::Align::Center)
             .build();
         description.set_xalign(0.5);
+        content_box.append(&description);
 
         let links_row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -1910,11 +1926,7 @@ impl AppController {
             .build();
 
         let make_link = |text: &str, url: &str| {
-            let link = gtk::LinkButton::builder()
-                .label(text)
-                .uri(url)
-                .halign(gtk::Align::Center)
-                .build();
+            let link = gtk::LinkButton::builder().label(text).uri(url).build();
             link.add_css_class("flat");
             link
         };
@@ -1929,21 +1941,19 @@ impl AppController {
             .halign(gtk::Align::Center)
             .build();
         separator.add_css_class("dim-label");
-
         links_row.append(&separator);
+
         links_row.append(&make_link(
             "Report an issue",
             "https://github.com/Letdown2491/nebula-gtk/issues",
         ));
 
-        content.set_halign(gtk::Align::Center);
-        content.append(&logo);
-        content.append(&title);
-        content.append(&description);
-        content.append(&links_row);
+        content_box.append(&links_row);
 
-        dialog.add_button("Close", gtk::ResponseType::Close);
-        dialog.connect_response(|dialog, _| dialog.close());
+        dialog.set_extra_child(Some(&content_box));
+        dialog.add_response("close", "Close");
+        dialog.set_default_response(Some("close"));
+        dialog.connect_response(None, |dialog, _| dialog.close());
 
         {
             let controller = Rc::downgrade(self);

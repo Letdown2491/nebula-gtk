@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.3 (Unreleased)
+- Added dedicated start/end window controls plus mirrored header logos so the system layout moves the branding to the free side.
+- Wired notify::empty listeners to toggle which logo is shown as GNOME switches button placement, keeping the menu button available either way.
+
 ## 1.2.2
 - Added hold/unhold feature for installed packages to prevent updates on specific package versions.
 - When the app details pane is opened in the Installed page, hide the buttons from the package list, and show then again when app details pane is closed.

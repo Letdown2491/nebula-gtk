@@ -81,11 +81,26 @@ pub(crate) fn build_ui(app: &adw::Application) {
     header_bar.set_show_start_title_buttons(false);
     root_box.append(&header_bar);
 
-    let header_logo = gtk::Image::from_resource("/tech/geektoshi/Nebula/icons/nebula.png");
-    header_logo.set_pixel_size(24);
-    header_logo.set_margin_start(6);
-    header_logo.set_valign(gtk::Align::Center);
-    header_bar.pack_start(&header_logo);
+    let start_controls = gtk::WindowControls::new(gtk::PackType::Start);
+    let end_controls = gtk::WindowControls::new(gtk::PackType::End);
+
+    let header_logo_start = gtk::Image::from_resource("/tech/geektoshi/Nebula/icons/nebula.png");
+    header_logo_start.set_pixel_size(24);
+    header_logo_start.set_margin_start(6);
+    header_logo_start.set_valign(gtk::Align::Center);
+
+    let header_logo_end = gtk::Image::from_resource("/tech/geektoshi/Nebula/icons/nebula.png");
+    header_logo_end.set_pixel_size(24);
+    header_logo_end.set_margin_end(6);
+    header_logo_end.set_valign(gtk::Align::Center);
+
+    let header_start_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
+        .build();
+    header_start_box.append(&start_controls);
+    header_start_box.append(&header_logo_start);
+    header_bar.pack_start(&header_start_box);
 
     let style_manager = adw::StyleManager::default();
     let stored_theme = {
@@ -273,14 +288,61 @@ pub(crate) fn build_ui(app: &adw::Application) {
     popover.set_child(Some(&popover_box));
     menu_button.set_popover(Some(&popover));
 
-    let window_controls = gtk::WindowControls::new(gtk::PackType::End);
     let header_controls_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
         .build();
     header_controls_box.append(&menu_button);
-    header_controls_box.append(&window_controls);
+    header_controls_box.append(&header_logo_end);
+    header_controls_box.append(&end_controls);
     header_bar.pack_end(&header_controls_box);
+
+    {
+        let start_empty = start_controls.property::<bool>("empty");
+        let end_empty = end_controls.property::<bool>("empty");
+        header_logo_start.set_visible(!end_empty);
+        header_logo_end.set_visible(!start_empty);
+    }
+
+    start_controls.connect_notify_local(
+        Some("empty"),
+        glib::clone!(
+            #[weak]
+            start_controls,
+            #[weak]
+            end_controls,
+            #[weak]
+            header_logo_start,
+            #[weak]
+            header_logo_end,
+            move |_, _| {
+                let start_empty = start_controls.property::<bool>("empty");
+                let end_empty = end_controls.property::<bool>("empty");
+                header_logo_start.set_visible(!end_empty);
+                header_logo_end.set_visible(!start_empty);
+            }
+        ),
+    );
+
+    end_controls.connect_notify_local(
+        Some("empty"),
+        glib::clone!(
+            #[weak]
+            start_controls,
+            #[weak]
+            end_controls,
+            #[weak]
+            header_logo_start,
+            #[weak]
+            header_logo_end,
+            move |_, _| {
+                let start_empty = start_controls.property::<bool>("empty");
+                let end_empty = end_controls.property::<bool>("empty");
+                header_logo_start.set_visible(!end_empty);
+                header_logo_end.set_visible(!start_empty);
+            }
+        ),
+    );
 
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)

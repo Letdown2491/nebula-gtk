@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2
+- Added hold/unhold feature for installed packages to prevent updates on specific package versions.
+- When the app details pane is opened in the Installed page, hide the buttons from the package list, and show then again when app details pane is closed.
+- Fixed a bug that kept app process running after quitting.
+- Updated version number.
+- Updated CHANGELOD.
+
 ## 1.1.4
 - Added state changes to Updates page to visually track status by button text.
 - Added log viewer to track full update state from XBPS.

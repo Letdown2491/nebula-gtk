@@ -13,6 +13,8 @@ Nebula is a GTK/libadwaita front-end for browsing and managing Void Linux packag
 - A Void Linux installation
 - GTK 4.14+ and libadwaita 1.4+ runtimes
 - Rust 1.88.0 or newer (tested with 1.88.0)
+- DBus
+- Polkit
 
 ## Quick Start
 

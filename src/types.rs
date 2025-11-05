@@ -7,6 +7,7 @@ pub struct PackageInfo {
     pub version: String,
     pub description: String,
     pub installed: bool,
+    pub pinned: bool,
     pub previous_version: Option<String>,
     pub download_size: Option<String>,
     pub changelog: Option<String>,

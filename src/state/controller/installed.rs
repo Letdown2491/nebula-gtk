@@ -16,8 +16,10 @@ use crate::helpers::{
 };
 use crate::state::controller::AppController;
 use crate::state::types::{AppMessage, InstalledFilter, RemoveOrigin};
-use crate::types::PackageInfo;
-use crate::xbps::{format_download_size, run_xbps_list_installed};
+use crate::types::{CommandResult, PackageInfo};
+use crate::xbps::{
+    format_download_size, run_xbps_list_installed, run_xbps_pkgdb_hold, run_xbps_pkgdb_unhold,
+};
 
 impl AppController {
     pub(crate) fn refresh_installed_packages(self: &Rc<Self>) {
@@ -145,6 +147,32 @@ impl AppController {
         }
     }
 
+    pub(crate) fn on_installed_detail_pin_toggle(self: &Rc<Self>) {
+        if self.state.borrow().pin_in_progress {
+            return;
+        }
+
+        let package = {
+            let state = self.state.borrow();
+            state.installed_detail_package.clone()
+        };
+        let Some(package) = package else {
+            return;
+        };
+
+        let current_pinned = {
+            let state = self.state.borrow();
+            state
+                .installed_packages
+                .iter()
+                .find(|pkg| pkg.name == package)
+                .map(|pkg| pkg.pinned)
+                .unwrap_or(false)
+        };
+
+        self.execute_pin_toggle(package, !current_pinned);
+    }
+
     pub(crate) fn on_installed_detail_close(self: &Rc<Self>) {
         self.widgets
             .installed
@@ -176,6 +204,42 @@ impl AppController {
             let result = query_installed_detail(&package_name, &installed_set);
             let _ = sender.send(AppMessage::InstalledDetailsLoaded {
                 package: package_name,
+                result,
+            });
+        });
+    }
+
+    pub(crate) fn execute_pin_toggle(self: &Rc<Self>, package: String, target_pinned: bool) {
+        {
+            let mut state = self.state.borrow_mut();
+            if state.pin_in_progress {
+                return;
+            }
+            state.pin_in_progress = true;
+        }
+
+        let action = if target_pinned {
+            "Holding"
+        } else {
+            "Unholding"
+        };
+        let message = format!("{action} \"{}\"…", package);
+        self.set_installed_status_message(Some(message.clone()));
+        self.set_footer_message(Some(&message));
+
+        self.update_installed_details();
+
+        let sender = self.sender.clone();
+        let package_for_thread = package.clone();
+        thread::spawn(move || {
+            let result = if target_pinned {
+                run_xbps_pkgdb_hold(&package_for_thread)
+            } else {
+                run_xbps_pkgdb_unhold(&package_for_thread)
+            };
+            let _ = sender.send(AppMessage::PinOperationFinished {
+                package: package_for_thread,
+                target_pinned,
                 result,
             });
         });
@@ -258,6 +322,82 @@ impl AppController {
         self.update_installed_details();
     }
 
+    pub(crate) fn finish_pin_toggle(
+        self: &Rc<Self>,
+        package: String,
+        target_pinned: bool,
+        result: Result<CommandResult, String>,
+    ) {
+        {
+            let mut state = self.state.borrow_mut();
+            state.pin_in_progress = false;
+        }
+
+        let mut state_updated = false;
+        let footer_message = match result {
+            Ok(command) => {
+                if command.success() {
+                    self.set_package_pinned_state(&package, target_pinned);
+                    state_updated = true;
+                    let message = if target_pinned {
+                        format!("\"{}\" is held at its current version.", package)
+                    } else {
+                        format!("\"{}\" will receive updates again.", package)
+                    };
+                    self.set_installed_status_message(Some(message.clone()));
+                    let toast = if target_pinned {
+                        format!("Held {}.", package)
+                    } else {
+                        format!("Resumed updates for {}.", package)
+                    };
+                    self.show_toast(&toast);
+                    Some(message)
+                } else {
+                    let detail = command.stderr.trim();
+                    let summary = if detail.is_empty() {
+                        command.stdout.trim()
+                    } else {
+                        detail
+                    };
+                    let message = if summary.is_empty() {
+                        if target_pinned {
+                            format!("Failed to hold \"{}\".", package)
+                        } else {
+                            format!("Failed to unhold \"{}\".", package)
+                        }
+                    } else if target_pinned {
+                        format!("Failed to hold \"{}\": {}", package, summary)
+                    } else {
+                        format!("Failed to unhold \"{}\": {}", package, summary)
+                    };
+                    self.set_installed_status_message(Some(message.clone()));
+                    self.show_error_dialog("Holding Failed", &message);
+                    Some(message)
+                }
+            }
+            Err(err) => {
+                let message = if target_pinned {
+                    format!("Failed to hold \"{}\": {}", package, err)
+                } else {
+                    format!("Failed to unhold \"{}\": {}", package, err)
+                };
+                self.set_installed_status_message(Some(message.clone()));
+                self.show_error_dialog("Holding Failed", &message);
+                Some(message)
+            }
+        };
+
+        self.update_installed_details();
+        self.update_installed_summary();
+        if !state_updated {
+            self.refresh_visible_installed_rows();
+            self.refresh_detail_pin_button();
+        }
+        if let Some(msg) = footer_message {
+            self.set_footer_message(Some(&msg));
+        }
+    }
+
     pub(crate) fn update_installed_summary(&self) {
         let (
             total,
@@ -329,11 +469,13 @@ impl AppController {
             .remove_selected_button
             .set_sensitive(can_remove);
 
-        let (detail_pkg, updates_busy) = {
+        let (detail_pkg, updates_busy, pin_in_progress, refreshing) = {
             let state = self.state.borrow();
             (
                 state.installed_detail_package.clone(),
                 state.update_in_progress || state.updates_loading,
+                state.pin_in_progress,
+                state.installed_refresh_in_progress,
             )
         };
         if let Some(pkg) = detail_pkg {
@@ -346,25 +488,56 @@ impl AppController {
                 .detail_remove_button
                 .set_sensitive(!remove_in_progress && !refreshing);
 
-            let has_update = {
+            let (has_update, pinned) = {
                 let state = self.state.borrow();
-                state.available_updates.iter().any(|p| p.name == pkg)
+                (
+                    state.available_updates.iter().any(|p| p.name == pkg),
+                    state
+                        .installed_packages
+                        .iter()
+                        .find(|info| info.name == pkg)
+                        .map(|info| info.pinned)
+                        .unwrap_or(false),
+                )
             };
             if has_update {
                 self.widgets
                     .installed
                     .detail_update_button
                     .set_visible(true);
+                let update_disabled = updates_busy || refreshing || pin_in_progress || pinned;
                 self.widgets
                     .installed
                     .detail_update_button
-                    .set_sensitive(!updates_busy && !refreshing);
+                    .set_sensitive(!update_disabled);
+                if pinned {
+                    self.widgets
+                        .installed
+                        .detail_update_button
+                        .set_tooltip_text(Some(
+                            "Updates are disabled because this package is held.",
+                        ));
+                } else {
+                    self.widgets
+                        .installed
+                        .detail_update_button
+                        .set_tooltip_text(Some("Install the available update."));
+                }
             } else {
                 self.widgets
                     .installed
                     .detail_update_button
                     .set_visible(false);
+                self.widgets
+                    .installed
+                    .detail_update_button
+                    .set_tooltip_text(None);
             }
+
+            self.widgets.installed.detail_pin_button.set_visible(true);
+            self.widgets.installed.detail_pin_button.set_sensitive(
+                !pin_in_progress && !remove_in_progress && !updates_busy && !refreshing,
+            );
         } else {
             self.widgets
                 .installed
@@ -374,6 +547,15 @@ impl AppController {
                 .installed
                 .detail_update_button
                 .set_visible(false);
+            self.widgets
+                .installed
+                .detail_update_button
+                .set_tooltip_text(None);
+            self.widgets.installed.detail_pin_button.set_visible(false);
+            self.widgets
+                .installed
+                .detail_pin_button
+                .set_sensitive(false);
         }
     }
 
@@ -404,6 +586,7 @@ impl AppController {
                 let mut state = self.state.borrow_mut();
                 state.installed_detail_package = Some(pkg.name.clone());
             }
+            self.set_installed_row_buttons_visible(false);
             self.widgets.installed.detail_frame.set_visible(true);
             self.widgets
                 .installed
@@ -416,16 +599,43 @@ impl AppController {
                 .set_sensitive(true);
             self.widgets.installed.detail_name.set_text(&pkg.name);
 
-            let (detail, loading, error, remove_in_progress, update_in_progress) = {
+            let (
+                detail,
+                loading,
+                error,
+                remove_in_progress,
+                updates_busy,
+                pin_in_progress,
+                refreshing,
+            ) = {
                 let state = self.state.borrow();
                 (
                     state.installed_detail_cache.get(&pkg.name).cloned(),
                     state.installed_detail_loading.contains(&pkg.name),
                     state.installed_detail_errors.get(&pkg.name).cloned(),
                     state.remove_in_progress,
-                    state.update_in_progress,
+                    state.update_in_progress || state.updates_loading,
+                    state.pin_in_progress,
+                    state.installed_refresh_in_progress,
                 )
             };
+
+            let pin_button = &self.widgets.installed.detail_pin_button;
+            pin_button.set_visible(true);
+            if pkg.pinned {
+                pin_button.set_label("Unhold");
+                pin_button.set_tooltip_text(Some(
+                    "Allow this package to receive updates during system upgrades.",
+                ));
+            } else {
+                pin_button.set_label("Hold");
+                pin_button.set_tooltip_text(Some(
+                    "Prevent this package from being updated during system upgrades.",
+                ));
+            }
+            pin_button.set_sensitive(
+                !pin_in_progress && !remove_in_progress && !updates_busy && !refreshing,
+            );
 
             let mut description_body = String::new();
             description_body.push_str(&pkg.description);
@@ -553,20 +763,37 @@ impl AppController {
                 self.widgets.installed.detail_update_label.set_text("");
             }
 
+            let update_button = &self.widgets.installed.detail_update_button;
+            if has_update {
+                update_button.set_visible(true);
+                let update_disabled = updates_busy || refreshing || pin_in_progress || pkg.pinned;
+                update_button.set_sensitive(!update_disabled);
+                if pkg.pinned {
+                    update_button.set_tooltip_text(Some(
+                        "Updates are disabled because this package is held.",
+                    ));
+                } else {
+                    update_button.set_tooltip_text(Some("Install the available update."));
+                }
+            } else {
+                update_button.set_visible(false);
+                update_button.set_tooltip_text(None);
+            }
+
             self.update_installed_required_by_ui(detail.as_ref(), loading, error.as_ref());
-            self.set_installed_row_buttons_visible(false);
 
             self.widgets
                 .installed
                 .detail_remove_button
-                .set_sensitive(!remove_in_progress);
-            self.widgets
-                .installed
-                .detail_update_button
-                .set_sensitive(!update_in_progress);
+                .set_sensitive(!remove_in_progress && !refreshing);
         } else {
             self.clear_installed_detail();
         }
+        if maybe_pkg.is_none() {
+            // ensure list buttons are visible again when detail closes
+            // clear_installed_detail already handles this; no action needed here.
+        }
+
         self.update_installed_detail_back_button();
         self.update_installed_summary();
     }
@@ -601,6 +828,13 @@ impl AppController {
         widgets.detail_remove_button.set_sensitive(false);
         widgets.detail_update_button.set_visible(false);
         widgets.detail_update_button.set_sensitive(false);
+        widgets.detail_update_button.set_tooltip_text(None);
+        widgets.detail_pin_button.set_visible(false);
+        widgets.detail_pin_button.set_sensitive(false);
+        widgets.detail_pin_button.set_label("Hold");
+        widgets.detail_pin_button.set_tooltip_text(Some(
+            "Prevent this package from being updated during system upgrades.",
+        ));
         self.set_installed_row_buttons_visible(true);
         self.update_installed_required_by_ui(None, false, None);
     }
@@ -615,8 +849,16 @@ impl AppController {
             }
         }
 
+        self.update_installed_row_actions_visibility(visible);
+
         if refresh {
             self.refresh_visible_installed_rows();
+        }
+    }
+
+    fn update_installed_row_actions_visibility(self: &Rc<Self>, visible: bool) {
+        for widget in self.installed_action_boxes.borrow().iter() {
+            widget.set_visible(visible);
         }
     }
 
@@ -699,6 +941,80 @@ impl AppController {
         installed_widgets
             .detail_required_by_stack
             .set_visible_child_name("placeholder");
+    }
+
+    fn set_package_pinned_state(self: &Rc<Self>, package: &str, pinned: bool) {
+        {
+            let mut state = self.state.borrow_mut();
+            if let Some(info) = state
+                .installed_packages
+                .iter_mut()
+                .find(|pkg| pkg.name == package)
+            {
+                info.pinned = pinned;
+            }
+
+            for info in &mut state.search_results {
+                if info.name == package {
+                    info.pinned = pinned;
+                }
+            }
+
+            for info in &mut state.available_updates {
+                if info.name == package {
+                    info.pinned = pinned;
+                }
+            }
+
+            if let Some(focus) = state.discover_detail_focus.as_mut() {
+                if focus.name == package {
+                    focus.pinned = pinned;
+                }
+            }
+        }
+
+        self.rebuild_installed_list();
+        self.refresh_detail_pin_button();
+    }
+
+    fn refresh_detail_pin_button(&self) {
+        let (pkg, updates_busy, remove_in_progress, pin_in_progress, refreshing) = {
+            let state = self.state.borrow();
+            let pkg = state.installed_detail_package.as_ref().and_then(|name| {
+                state
+                    .installed_packages
+                    .iter()
+                    .find(|info| &info.name == name)
+                    .cloned()
+            });
+            (
+                pkg,
+                state.update_in_progress || state.updates_loading,
+                state.remove_in_progress,
+                state.pin_in_progress,
+                state.installed_refresh_in_progress,
+            )
+        };
+
+        let Some(pkg) = pkg else {
+            return;
+        };
+
+        let button = &self.widgets.installed.detail_pin_button;
+        button.set_visible(true);
+        if pkg.pinned {
+            button.set_label("Unhold");
+            button.set_tooltip_text(Some(
+                "Allow this package to receive updates during system upgrades.",
+            ));
+        } else {
+            button.set_label("Hold");
+            button.set_tooltip_text(Some(
+                "Prevent this package from being updated during system upgrades.",
+            ));
+        }
+        button
+            .set_sensitive(!pin_in_progress && !remove_in_progress && !updates_busy && !refreshing);
     }
 
     fn clear_installed_detail_history(&self) {
@@ -895,21 +1211,39 @@ impl AppController {
     }
 
     fn build_installed_row_widget(self: &Rc<Self>, package_index: usize) -> adw::ActionRow {
-        let (pkg, remove_disabled, has_update, is_selected, row_buttons_visible) = {
+        let (
+            pkg,
+            remove_disabled,
+            has_update,
+            is_selected,
+            row_buttons_visible,
+            detail_open,
+            updates_busy,
+            pin_in_progress,
+            refreshing,
+        ) = {
             let state = self.state.borrow();
             let Some(pkg) = state.installed_packages.get(package_index).cloned() else {
                 return adw::ActionRow::builder().title("").build();
             };
-            let remove_disabled = state.remove_in_progress;
+            let remove_disabled = state.remove_in_progress || state.installed_refresh_in_progress;
             let has_update = state.available_update_names.contains(&pkg.name);
             let is_selected = state.installed_selected.contains(&pkg.name);
             let row_buttons_visible = state.installed_row_buttons_visible;
+            let detail_open = state.installed_detail_package.is_some();
+            let updates_busy = state.update_in_progress || state.updates_loading;
+            let pin_in_progress = state.pin_in_progress;
+            let refreshing = state.installed_refresh_in_progress;
             (
                 pkg,
                 remove_disabled,
                 has_update,
                 is_selected,
                 row_buttons_visible,
+                detail_open,
+                updates_busy,
+                pin_in_progress,
+                refreshing,
             )
         };
 
@@ -963,26 +1297,74 @@ impl AppController {
         prefix_box.append(&icon);
         row.add_prefix(&prefix_box);
 
+        let show_actions = row_buttons_visible && !detail_open;
+        let actions_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(6)
+            .valign(gtk::Align::Center)
+            .build();
+
         if has_update {
             let package_name = pkg.name.clone();
             let update_button = gtk::Button::builder().label("Update").build();
             update_button.add_css_class("suggested-action");
             update_button.set_valign(gtk::Align::Center);
-            update_button.set_visible(row_buttons_visible);
             let weak_self = Rc::downgrade(self);
             update_button.connect_clicked(move |_| {
                 if let Some(controller) = weak_self.upgrade() {
                     controller.start_update(package_name.clone(), false);
                 }
             });
-            row.add_suffix(&update_button);
+            let update_disabled = updates_busy || refreshing || pin_in_progress || pkg.pinned;
+            update_button.set_sensitive(!update_disabled);
+            if pkg.pinned {
+                update_button
+                    .set_tooltip_text(Some("Updates are disabled because this package is held."));
+            } else {
+                update_button.set_tooltip_text(Some("Install the available update."));
+            }
+            actions_box.append(&update_button);
         }
+
+        let pin_label = if pkg.pinned { "Unhold" } else { "Hold" };
+        let pin_button = gtk::Button::builder()
+            .label(pin_label)
+            .width_request(120)
+            .build();
+        pin_button.set_valign(gtk::Align::Center);
+        if pkg.pinned {
+            pin_button.set_tooltip_text(Some(
+                "Allow this package to receive updates during system upgrades.",
+            ));
+        } else {
+            pin_button.set_tooltip_text(Some(
+                "Prevent this package from being updated during system upgrades.",
+            ));
+        }
+        let pin_disabled = pin_in_progress || remove_disabled || updates_busy || refreshing;
+        pin_button.set_sensitive(!pin_disabled);
+        let package_name = pkg.name.clone();
+        let weak_self = Rc::downgrade(self);
+        pin_button.connect_clicked(move |_| {
+            if let Some(controller) = weak_self.upgrade() {
+                let target_pinned = {
+                    let state = controller.state.borrow();
+                    state
+                        .installed_packages
+                        .iter()
+                        .find(|info| info.name == package_name)
+                        .map(|info| info.pinned)
+                        .unwrap_or(false)
+                };
+                controller.execute_pin_toggle(package_name.clone(), !target_pinned);
+            }
+        });
+        actions_box.append(&pin_button);
 
         let remove_button = gtk::Button::builder().label("Remove").build();
         remove_button.add_css_class("destructive-action");
         remove_button.set_sensitive(!remove_disabled);
         remove_button.set_valign(gtk::Align::Center);
-        remove_button.set_visible(row_buttons_visible);
 
         let package_name = pkg.name.clone();
         let weak_self = Rc::downgrade(self);
@@ -991,13 +1373,26 @@ impl AppController {
                 controller.start_remove(package_name.clone(), RemoveOrigin::Installed);
             }
         });
+        actions_box.append(&remove_button);
 
-        row.add_suffix(&remove_button);
+        actions_box.set_visible(show_actions);
+        let actions_widget: gtk::Widget = actions_box.clone().upcast();
+        unsafe {
+            row.set_data("installed-actions", actions_widget);
+        }
+        row.add_suffix(&actions_box);
 
         row
     }
 
     pub(crate) fn bind_installed_list_item(self: &Rc<Self>, list_item: &gtk::ListItem) {
+        let old_widget = unsafe { list_item.steal_data::<gtk::Widget>("installed-actions") };
+        if let Some(old_widget) = old_widget {
+            self.installed_action_boxes
+                .borrow_mut()
+                .retain(|widget| widget != &old_widget);
+        }
+
         let Some(item) = list_item.item() else {
             list_item.set_child(None::<&gtk::Widget>);
             return;
@@ -1008,6 +1403,17 @@ impl AppController {
         };
         let index = *boxed.borrow::<usize>();
         let row = self.build_installed_row_widget(index);
+
+        let actions_widget = unsafe { row.steal_data::<gtk::Widget>("installed-actions") };
+        if let Some(actions_widget) = actions_widget {
+            unsafe {
+                list_item.set_data("installed-actions", actions_widget.clone());
+            }
+            self.installed_action_boxes
+                .borrow_mut()
+                .push(actions_widget);
+        }
+
         list_item.set_child(Some(&row));
     }
 

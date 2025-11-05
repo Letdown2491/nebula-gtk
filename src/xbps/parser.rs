@@ -129,6 +129,7 @@ pub(crate) fn parse_query_output(output: &str) -> Vec<PackageInfo> {
                 version,
                 description,
                 installed,
+                pinned: false,
                 previous_version: None,
                 download_size: None,
                 changelog: None,
@@ -151,7 +152,7 @@ pub(crate) fn parse_installed_output(output: &str) -> Vec<PackageInfo> {
             }
 
             let mut split = trimmed.split_whitespace();
-            let _status = split.next()?;
+            let status = split.next()?;
             let identifier = split.next()?;
             let (name, version) = split_package_identifier(identifier);
 
@@ -161,6 +162,8 @@ pub(crate) fn parse_installed_output(output: &str) -> Vec<PackageInfo> {
                 .map(|rest| rest.trim().to_string())
                 .unwrap_or_default();
 
+            let pinned = status.chars().any(|ch| matches!(ch, 'h' | 'H' | 'p' | 'P'));
+
             Some(PackageInfo {
                 name_lower: lowercase_cache(&name),
                 version_lower: lowercase_cache(&version),
@@ -169,6 +172,7 @@ pub(crate) fn parse_installed_output(output: &str) -> Vec<PackageInfo> {
                 version,
                 description,
                 installed: true,
+                pinned,
                 previous_version: None,
                 download_size: None,
                 changelog: None,

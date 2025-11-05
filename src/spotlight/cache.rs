@@ -76,6 +76,7 @@ pub(crate) fn load_spotlight_cache_from_disk() -> SpotlightCache {
             version,
             description,
             installed: false,
+            pinned: false,
             previous_version: None,
             download_size: None,
             changelog: None,

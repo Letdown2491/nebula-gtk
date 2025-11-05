@@ -466,6 +466,7 @@ pub(crate) fn query_repo_package_info(name: &str) -> Result<PackageInfo, String>
         version,
         description,
         installed: true,
+        pinned: false,
         previous_version: None,
         download_size,
         changelog,
@@ -508,6 +509,14 @@ pub(crate) fn query_installed_package_version(name: &str) -> Option<String> {
 
 pub(crate) fn run_xbps_remove_orphans() -> Result<CommandResult, String> {
     run_privileged_command("xbps-remove", &["-O"])
+}
+
+pub(crate) fn run_xbps_pkgdb_hold(package: &str) -> Result<CommandResult, String> {
+    run_privileged_command("xbps-pkgdb", &["-m", "hold", package])
+}
+
+pub(crate) fn run_xbps_pkgdb_unhold(package: &str) -> Result<CommandResult, String> {
+    run_privileged_command("xbps-pkgdb", &["-m", "unhold", package])
 }
 
 pub(crate) fn run_xbps_pkgdb_check() -> Result<CommandResult, String> {
@@ -686,6 +695,7 @@ fn add_update_entry(
             version: version.clone(),
             description,
             installed: true,
+            pinned: false,
             previous_version: previous_version.clone(),
             download_size: None,
             changelog: None,

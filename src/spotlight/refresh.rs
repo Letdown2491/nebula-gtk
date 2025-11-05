@@ -103,6 +103,7 @@ pub(crate) fn refresh_spotlight_cache(
                 version: version.clone(),
                 description: description.clone(),
                 installed: false,
+                pinned: false,
                 previous_version: None,
                 download_size: None,
                 changelog: None,

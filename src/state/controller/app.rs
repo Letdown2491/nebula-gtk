@@ -34,6 +34,7 @@ pub(crate) struct AppController {
     pub(crate) window: adw::ApplicationWindow,
     pub(crate) settings: Rc<RefCell<AppSettings>>,
     pub(crate) update_buttons: RefCell<HashMap<String, gtk::Button>>,
+    pub(crate) installed_action_boxes: RefCell<Vec<gtk::Widget>>,
     pub(crate) discover_buttons: RefCell<Vec<gtk::Button>>,
     pub(crate) preferences_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) mirrors_window: RefCell<Option<adw::PreferencesWindow>>,
@@ -80,6 +81,7 @@ impl AppController {
             window,
             settings,
             update_buttons: RefCell::new(HashMap::new()),
+            installed_action_boxes: RefCell::new(Vec::new()),
             discover_buttons: RefCell::new(Vec::new()),
             preferences_window: RefCell::new(None),
             mirrors_window: RefCell::new(None),
@@ -115,9 +117,21 @@ impl AppController {
         self.widgets
             .installed
             .list_factory
-            .connect_unbind(|_, list_item| {
-                list_item.set_child(None::<&gtk::Widget>);
-            });
+            .connect_unbind(glib::clone!(
+                #[weak(rename_to = controller)]
+                self,
+                move |_, list_item| {
+                    let actions_widget =
+                        unsafe { list_item.steal_data::<gtk::Widget>("installed-actions") };
+                    if let Some(actions_widget) = actions_widget {
+                        controller
+                            .installed_action_boxes
+                            .borrow_mut()
+                            .retain(|widget| widget != &actions_widget);
+                    }
+                    list_item.set_child(None::<&gtk::Widget>);
+                }
+            ));
 
         self.widgets
             .installed
@@ -509,6 +523,17 @@ impl AppController {
                 self,
                 move |_| {
                     controller.on_installed_detail_update();
+                }
+            ));
+
+        self.widgets
+            .installed
+            .detail_pin_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_installed_detail_pin_toggle();
                 }
             ));
 
@@ -957,6 +982,13 @@ impl AppController {
             }
             AppMessage::RemoveBatchFinished { packages, result } => {
                 self.finish_remove_batch(packages, result);
+            }
+            AppMessage::PinOperationFinished {
+                package,
+                target_pinned,
+                result,
+            } => {
+                self.finish_pin_toggle(package, target_pinned, result);
             }
             AppMessage::InstalledDetailsLoaded { package, result } => {
                 self.finish_installed_detail(package, result);

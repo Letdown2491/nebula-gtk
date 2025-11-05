@@ -22,6 +22,7 @@ pub(crate) struct InstalledWidgets {
     pub(crate) detail_frame: gtk::Frame,
     pub(crate) detail_remove_button: gtk::Button,
     pub(crate) detail_update_button: gtk::Button,
+    pub(crate) detail_pin_button: gtk::Button,
     pub(crate) detail_back_button: gtk::Button,
     pub(crate) detail_close_button: gtk::Button,
     pub(crate) detail_name: gtk::Label,
@@ -363,6 +364,18 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
     detail_update_button.set_margin_start(0);
     detail_update_button.set_tooltip_text(Some("Install the available update."));
 
+    let detail_pin_button = gtk::Button::builder()
+        .label("Hold")
+        .width_request(120)
+        .width_request(120)
+        .build();
+    detail_pin_button.set_halign(gtk::Align::Start);
+    detail_pin_button.set_visible(false);
+    detail_pin_button.set_valign(gtk::Align::Center);
+    detail_pin_button.set_tooltip_text(Some(
+        "Prevent this package from being updated during system upgrades.",
+    ));
+
     let detail_header_container = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
@@ -393,8 +406,9 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
         .halign(gtk::Align::Start)
         .build();
     detail_actions_row.set_margin_top(6);
-    detail_actions_row.append(&detail_remove_button);
     detail_actions_row.append(&detail_update_button);
+    detail_actions_row.append(&detail_pin_button);
+    detail_actions_row.append(&detail_remove_button);
     detail_box.append(&detail_actions_row);
 
     let detail_required_by_placeholder = gtk::Label::builder()
@@ -496,6 +510,7 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
         detail_frame,
         detail_remove_button,
         detail_update_button,
+        detail_pin_button,
         detail_back_button,
         detail_close_button,
         detail_name,

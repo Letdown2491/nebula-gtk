@@ -46,6 +46,7 @@ pub(crate) struct AppState {
     pub(crate) search_in_progress: bool,
     pub(crate) install_in_progress: bool,
     pub(crate) remove_in_progress: bool,
+    pub(crate) pin_in_progress: bool,
     pub(crate) installed_refresh_in_progress: bool,
     pub(crate) spotlight_cache: SpotlightCache,
     pub(crate) spotlight_recent: Vec<PackageInfo>,
@@ -149,6 +150,11 @@ pub(crate) enum AppMessage {
     },
     RemoveBatchFinished {
         packages: Vec<String>,
+        result: Result<CommandResult, String>,
+    },
+    PinOperationFinished {
+        package: String,
+        target_pinned: bool,
         result: Result<CommandResult, String>,
     },
     InstalledDetailsLoaded {

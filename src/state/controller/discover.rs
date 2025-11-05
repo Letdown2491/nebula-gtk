@@ -395,9 +395,16 @@ impl AppController {
     }
 
     pub(crate) fn open_discover_dependency_detail(self: &Rc<Self>, package: String) {
-        let installed = {
+        let (installed, pinned) = {
             let state = self.state.borrow();
-            state.installed_set.contains(&package)
+            let installed = state.installed_set.contains(&package);
+            let pinned = state
+                .installed_packages
+                .iter()
+                .find(|pkg| pkg.name == package)
+                .map(|pkg| pkg.pinned)
+                .unwrap_or(false);
+            (installed, pinned)
         };
 
         {
@@ -415,6 +422,7 @@ impl AppController {
                 version,
                 description,
                 installed,
+                pinned,
                 previous_version: None,
                 download_size: None,
                 changelog: None,

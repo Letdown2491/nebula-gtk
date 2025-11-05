@@ -407,21 +407,28 @@ pub(crate) fn build_ui(app: &adw::Application) {
     }
 
     let settings_for_close = Rc::clone(&settings);
-    window.connect_close_request(move |win| {
-        let width = win.width();
-        let height = win.height();
-        if width > 0 && height > 0 {
-            {
-                let mut data = settings_for_close.borrow_mut();
-                data.window_width = Some(width);
-                data.window_height = Some(height);
+    window.connect_close_request(glib::clone!(
+        #[strong]
+        app,
+        #[strong]
+        settings_for_close,
+        move |win| {
+            let width = win.width();
+            let height = win.height();
+            if width > 0 && height > 0 {
+                {
+                    let mut data = settings_for_close.borrow_mut();
+                    data.window_width = Some(width);
+                    data.window_height = Some(height);
+                }
+                if let Err(err) = save_app_settings(&settings_for_close.borrow()) {
+                    eprintln!("Failed to save settings: {}", err);
+                }
             }
-            if let Err(err) = save_app_settings(&settings_for_close.borrow()) {
-                eprintln!("Failed to save settings: {}", err);
-            }
-        }
-        glib::Propagation::Proceed
-    });
+            app.quit();
+            glib::Propagation::Stop
+        },
+    ));
 
     window.present();
 }

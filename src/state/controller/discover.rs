@@ -129,6 +129,10 @@ impl AppController {
             }
             None => return,
         };
+        self.request_install_for_package(package);
+    }
+
+    fn request_install_for_package(self: &Rc<Self>, package: PackageInfo) {
         if self.state.borrow().confirm_install {
             let pkg_clone = package.clone();
             let heading = format!("Install \"{}\"?", package.name);
@@ -148,6 +152,24 @@ impl AppController {
             _ => return,
         };
         self.start_remove(package.name, RemoveOrigin::Discover);
+    }
+
+    pub(crate) fn on_discover_detail_action(self: &Rc<Self>) {
+        let package = {
+            let state = self.state.borrow();
+            state.discover_detail_focus.clone()
+        };
+
+        let Some(pkg) = package else {
+            self.on_discover_primary_action();
+            return;
+        };
+
+        if pkg.installed {
+            self.start_remove(pkg.name.clone(), RemoveOrigin::Discover);
+        } else {
+            self.request_install_for_package(pkg);
+        }
     }
 
     pub(crate) fn on_search_row_selected(self: &Rc<Self>, row: Option<gtk::ListBoxRow>) {
@@ -441,8 +463,105 @@ impl AppController {
     }
 
     pub(crate) fn set_discover_row_buttons_visible(&self, visible: bool) {
-        for button in self.discover_buttons.borrow().iter() {
+        self.state.borrow_mut().discover_row_buttons_visible = visible;
+        for button in self.discover_buttons.borrow().values() {
             button.set_visible(visible);
+        }
+        self.refresh_discover_row_progress();
+    }
+
+    pub(crate) fn refresh_discover_install_widgets(&self) {
+        let busy = {
+            let state = self.state.borrow();
+            state.install_in_progress || state.remove_in_progress
+        };
+        for button in self.discover_buttons.borrow().values() {
+            button.set_sensitive(!busy);
+        }
+        self.refresh_discover_row_progress();
+    }
+
+    pub(crate) fn refresh_discover_row_progress(&self) {
+        let packages: Vec<String> = self
+            .discover_row_stacks
+            .borrow()
+            .keys()
+            .cloned()
+            .collect();
+        for package in packages {
+            self.update_discover_row_progress_for_package(&package);
+        }
+    }
+
+    fn update_discover_row_progress_for_package(&self, package: &str) {
+        let (installing, removing, installing_package, removing_packages, detail_focus, buttons_visible) =
+            {
+                let state = self.state.borrow();
+                (
+                    state.install_in_progress,
+                    state.remove_in_progress,
+                    state.installing_package.clone(),
+                    state.removing_packages.clone(),
+                    state
+                        .discover_detail_focus
+                        .as_ref()
+                        .map(|pkg| pkg.name.clone()),
+                    state.discover_row_buttons_visible,
+                )
+            };
+
+        let stack = self.discover_row_stacks.borrow().get(package).cloned();
+        let progress = self
+            .discover_progress_bars
+            .borrow()
+            .get(package)
+            .cloned();
+        let button = self.discover_buttons.borrow().get(package).cloned();
+
+        let Some(stack) = stack else {
+            return;
+        };
+
+        let mut show_progress = false;
+        let mut label = "Working…";
+        if installing && installing_package.as_deref() == Some(package) {
+            show_progress = true;
+            label = "Installing…";
+        } else if removing && removing_packages.contains(package) {
+            show_progress = true;
+            label = "Removing…";
+        }
+
+        if let Some(progress) = progress {
+            progress.set_text(Some(label));
+            progress.set_visible(show_progress);
+        }
+
+        stack.set_visible_child_name(if show_progress { "progress" } else { "button" });
+
+        if let Some(button) = button {
+            button.set_visible(!show_progress && buttons_visible);
+        }
+
+        if let Some(focus) = detail_focus {
+            if focus == package {
+                let action_stack = &self.widgets.discover.detail_action_stack;
+                let action_progress = &self.widgets.discover.detail_action_progress;
+                if show_progress {
+                    action_progress.set_text(Some(label));
+                    action_progress.set_visible(true);
+                    action_stack.set_visible(true);
+                    action_stack.set_visible_child_name("progress");
+                } else {
+                    action_progress.set_visible(false);
+                    if self.widgets.discover.detail_action_button.is_visible() {
+                        action_stack.set_visible(true);
+                        action_stack.set_visible_child_name("button");
+                    } else {
+                        action_stack.set_visible(false);
+                    }
+                }
+            }
         }
     }
 
@@ -489,6 +608,8 @@ impl AppController {
             )
         };
         self.discover_buttons.borrow_mut().clear();
+        self.discover_row_stacks.borrow_mut().clear();
+        self.discover_progress_bars.borrow_mut().clear();
         for pkg in &results {
             let row = self.build_discover_row(pkg);
             list.append(&row);
@@ -553,19 +674,40 @@ impl AppController {
             }
         }
 
-        let package_name = pkg.name.clone();
         let weak_self = Rc::downgrade(self);
         if !pkg.installed {
+            let package_info = pkg.clone();
             button.connect_clicked(move |_| {
                 if let Some(controller) = weak_self.upgrade() {
-                    controller.select_search_row_by_name(&package_name);
-                    controller.on_discover_primary_action();
+                    controller.request_install_for_package(package_info.clone());
                 }
             });
         }
 
-        row.add_suffix(&button);
-        self.discover_buttons.borrow_mut().push(button);
+        let progress = gtk::ProgressBar::builder()
+            .width_request(140)
+            .show_text(true)
+            .text("Working…")
+            .visible(false)
+            .build();
+
+        let action_stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .build();
+        action_stack.add_named(&button, Some("button"));
+        action_stack.add_named(&progress, Some("progress"));
+        action_stack.set_visible_child_name("button");
+
+        row.add_suffix(&action_stack);
+        self.discover_buttons
+            .borrow_mut()
+            .insert(pkg.name.clone(), button);
+        self.discover_row_stacks
+            .borrow_mut()
+            .insert(pkg.name.clone(), action_stack);
+        self.discover_progress_bars
+            .borrow_mut()
+            .insert(pkg.name.clone(), progress);
 
         row
     }
@@ -636,8 +778,19 @@ impl AppController {
         let dependencies_stack = &self.widgets.discover.detail_dependencies_stack;
         let dependencies_list = &self.widgets.discover.detail_dependencies_list;
         let dependencies_placeholder = &self.widgets.discover.detail_dependencies_placeholder;
+        let action_stack = &self.widgets.discover.detail_action_stack;
+        let action_progress = &self.widgets.discover.detail_action_progress;
 
-        let (pkg, detail, loading, error, install_in_progress, remove_in_progress) = {
+        let (
+            pkg,
+            detail,
+            loading,
+            error,
+            install_in_progress,
+            remove_in_progress,
+            installing_package,
+            removing_packages,
+        ) = {
             let state = self.state.borrow();
             let focus = state.discover_detail_focus.clone();
             let detail = focus
@@ -656,6 +809,8 @@ impl AppController {
                 error,
                 state.install_in_progress,
                 state.remove_in_progress,
+                state.installing_package.clone(),
+                state.removing_packages.clone(),
             )
         };
 
@@ -669,6 +824,9 @@ impl AppController {
                 .set_sensitive(true);
             self.widgets.discover.detail_name.set_text(&pkg.name);
 
+            action_stack.set_visible(true);
+            self.set_discover_row_buttons_visible(false);
+
             let actions_enabled = !loading && !install_in_progress && !remove_in_progress;
             button.set_visible(true);
             button.set_sensitive(actions_enabled);
@@ -680,6 +838,25 @@ impl AppController {
             } else {
                 button.set_label("Install");
                 button.add_css_class("suggested-action");
+            }
+
+            let installing_current =
+                install_in_progress && installing_package.as_deref() == Some(pkg.name.as_str());
+            let removing_current =
+                remove_in_progress && removing_packages.contains(&pkg.name);
+            if installing_current || removing_current {
+                let label = if removing_current {
+                    "Removing…"
+                } else {
+                    "Installing…"
+                };
+                action_progress.set_text(Some(label));
+                action_progress.set_visible(true);
+                action_stack.set_visible_child_name("progress");
+                button.set_visible(false);
+            } else {
+                action_progress.set_visible(false);
+                action_stack.set_visible_child_name("button");
             }
 
             if loading {
@@ -869,8 +1046,6 @@ impl AppController {
                 }
             }
 
-            button.set_visible(true);
-            button.set_sensitive(!install_in_progress && !remove_in_progress);
             return;
         }
 
@@ -881,6 +1056,19 @@ impl AppController {
             .discover
             .detail_close_button
             .set_sensitive(false);
+        self.widgets.discover.detail_action_stack.set_visible(false);
+        self.widgets
+            .discover
+            .detail_action_progress
+            .set_visible(false);
+        self.widgets
+            .discover
+            .detail_action_stack
+            .set_visible(false);
+        self.widgets
+            .discover
+            .detail_action_progress
+            .set_visible(false);
         self.widgets
             .discover
             .detail_name
@@ -1004,10 +1192,6 @@ impl AppController {
             }
         }
         state.discover_detail_focus.clone()
-    }
-
-    pub(crate) fn select_search_row_by_name(self: &Rc<Self>, name: &str) {
-        let _ = self.focus_discover_package(name, false);
     }
 
     pub(crate) fn on_discover_detail_close(self: &Rc<Self>) {

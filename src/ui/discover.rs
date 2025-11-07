@@ -63,6 +63,8 @@ pub(crate) struct DiscoverWidgets {
     pub(crate) detail_license_value: gtk::Label,
     pub(crate) detail_update_label: gtk::Label,
     pub(crate) detail_action_button: gtk::Button,
+    pub(crate) detail_action_progress: gtk::ProgressBar,
+    pub(crate) detail_action_stack: gtk::Stack,
     pub(crate) detail_dependencies_stack: gtk::Stack,
     pub(crate) detail_dependencies_list: gtk::ListBox,
     pub(crate) detail_dependencies_placeholder: gtk::Label,
@@ -686,6 +688,24 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     detail_action_button.set_visible(false);
     detail_action_button.set_halign(gtk::Align::Start);
 
+    let detail_action_progress = gtk::ProgressBar::builder()
+        .show_text(true)
+        .text("Working…")
+        .visible(false)
+        .hexpand(true)
+        .build();
+    detail_action_progress.set_halign(gtk::Align::Fill);
+
+    let detail_action_stack = gtk::Stack::builder()
+        .transition_type(gtk::StackTransitionType::Crossfade)
+        .visible(false)
+        .hexpand(true)
+        .build();
+    detail_action_stack.set_halign(gtk::Align::Fill);
+    detail_action_stack.add_named(&detail_action_button, Some("button"));
+    detail_action_stack.add_named(&detail_action_progress, Some("progress"));
+    detail_action_stack.set_visible_child_name("button");
+
     let detail_close_button = gtk::Button::builder()
         .icon_name("window-close-symbolic")
         .tooltip_text("Close details")
@@ -877,10 +897,11 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
     let detail_actions_row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(8)
-        .halign(gtk::Align::Start)
+        .halign(gtk::Align::Fill)
+        .hexpand(true)
         .build();
     detail_actions_row.set_margin_top(6);
-    detail_actions_row.append(&detail_action_button);
+    detail_actions_row.append(&detail_action_stack);
     detail_actions_row.append(&detail_update_button);
 
     let detail_dependencies_list = gtk::ListBox::new();
@@ -995,6 +1016,8 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         detail_license_value,
         detail_update_label,
         detail_action_button,
+        detail_action_progress,
+        detail_action_stack: detail_action_stack.clone(),
         detail_dependencies_stack,
         detail_dependencies_list,
         detail_dependencies_placeholder,

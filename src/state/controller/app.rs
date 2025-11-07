@@ -35,7 +35,9 @@ pub(crate) struct AppController {
     pub(crate) settings: Rc<RefCell<AppSettings>>,
     pub(crate) update_buttons: RefCell<HashMap<String, gtk::Button>>,
     pub(crate) installed_action_boxes: RefCell<Vec<gtk::Widget>>,
-    pub(crate) discover_buttons: RefCell<Vec<gtk::Button>>,
+    pub(crate) discover_buttons: RefCell<HashMap<String, gtk::Button>>,
+    pub(crate) discover_row_stacks: RefCell<HashMap<String, gtk::Stack>>,
+    pub(crate) discover_progress_bars: RefCell<HashMap<String, gtk::ProgressBar>>,
     pub(crate) preferences_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) mirrors_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) about_dialog: RefCell<Option<adw::MessageDialog>>,
@@ -72,6 +74,7 @@ impl AppController {
             state.notify_updates = settings_ref.notify_updates;
         }
         state.installed_row_buttons_visible = true;
+        state.discover_row_buttons_visible = true;
 
         Self {
             widgets,
@@ -82,7 +85,9 @@ impl AppController {
             settings,
             update_buttons: RefCell::new(HashMap::new()),
             installed_action_boxes: RefCell::new(Vec::new()),
-            discover_buttons: RefCell::new(Vec::new()),
+            discover_buttons: RefCell::new(HashMap::new()),
+            discover_row_stacks: RefCell::new(HashMap::new()),
+            discover_progress_bars: RefCell::new(HashMap::new()),
             preferences_window: RefCell::new(None),
             mirrors_window: RefCell::new(None),
             about_dialog: RefCell::new(None),
@@ -187,7 +192,7 @@ impl AppController {
                 #[strong(rename_to = controller)]
                 self,
                 move |_| {
-                    controller.on_discover_primary_action();
+                    controller.on_discover_detail_action();
                 }
             ));
         self.widgets
@@ -850,9 +855,12 @@ impl AppController {
                 return;
             }
             state.install_in_progress = true;
+            state.installing_package = Some(package.name.clone());
         }
 
         self.rebuild_search_list();
+        self.refresh_discover_install_widgets();
+        self.restore_discover_focus_for(&package.name);
 
         let message = format!("Installing \"{}\"…", package.name);
         self.set_footer_message(Some(&message));
@@ -874,6 +882,7 @@ impl AppController {
                 return;
             }
             state.remove_in_progress = true;
+            state.removing_packages.insert(package.clone());
         }
 
         let message = format!("Removing \"{}\"…", package);
@@ -888,6 +897,8 @@ impl AppController {
         }
 
         self.rebuild_search_list();
+        self.refresh_discover_install_widgets();
+        self.restore_discover_focus_for(&package);
 
         let sender = self.sender.clone();
         thread::spawn(move || {
@@ -907,6 +918,9 @@ impl AppController {
                 return;
             }
             state.remove_in_progress = true;
+            for pkg in &packages {
+                state.removing_packages.insert(pkg.clone());
+            }
         }
 
         self.update_installed_selection_ui();
@@ -918,6 +932,19 @@ impl AppController {
         );
         self.set_installed_status_message(Some(message.clone()));
         self.set_footer_message(Some(&message));
+
+        self.refresh_discover_install_widgets();
+        if let Some(focus) = self
+            .state
+            .borrow()
+            .discover_detail_focus
+            .as_ref()
+            .map(|pkg| pkg.name.clone())
+        {
+            if packages.contains(&focus) {
+                self.restore_discover_focus_for(&focus);
+            }
+        }
 
         let sender = self.sender.clone();
         let packages_for_thread = packages.clone();
@@ -1260,6 +1287,7 @@ impl AppController {
         {
             let mut state = self.state.borrow_mut();
             state.install_in_progress = false;
+            state.installing_package = None;
         }
 
         let footer_message = match result {
@@ -1293,6 +1321,8 @@ impl AppController {
         self.update_discover_details();
         self.refresh_updates(true);
         self.rebuild_search_list();
+        self.refresh_discover_install_widgets();
+        self.restore_discover_focus_for(&package);
         if let Some(msg) = footer_message {
             self.set_footer_message(Some(&msg));
         }
@@ -1347,6 +1377,8 @@ impl AppController {
         self.update_discover_details();
         self.refresh_updates(true);
         self.rebuild_search_list();
+        self.refresh_discover_install_widgets();
+        self.restore_discover_focus_for(&package);
         if let Some(msg) = footer_message {
             self.set_footer_message(Some(&msg));
         }
@@ -1361,6 +1393,7 @@ impl AppController {
             let mut state = self.state.borrow_mut();
             state.remove_in_progress = false;
             for pkg in &packages {
+                state.removing_packages.remove(pkg);
                 state.installed_selected.remove(pkg);
                 state.installed_detail_cache.remove(pkg);
                 state.installed_detail_loading.remove(pkg);
@@ -1385,8 +1418,8 @@ impl AppController {
                     } else {
                         self.show_toast("Selected packages removed.");
                     }
-                    for pkg in packages {
-                        self.flag_installed_state(&pkg, false);
+                    for pkg in &packages {
+                        self.flag_installed_state(pkg, false);
                     }
                     self.refresh_installed_packages();
                     Some(message)
@@ -1411,8 +1444,40 @@ impl AppController {
             }
         };
         self.refresh_updates(true);
+        self.rebuild_search_list();
+        self.refresh_discover_install_widgets();
+        if let Some(focus) = self
+            .state
+            .borrow()
+            .discover_detail_focus
+            .as_ref()
+            .map(|pkg| pkg.name.clone())
+        {
+            if packages.iter().any(|pkg| *pkg == focus) {
+                if !self.focus_discover_package(&focus, false) {
+                    self.update_discover_details();
+                }
+            }
+        } else {
+            self.update_discover_details();
+        }
         if let Some(msg) = footer_message {
             self.set_footer_message(Some(&msg));
+        }
+    }
+
+    fn restore_discover_focus_for(self: &Rc<Self>, package: &str) {
+        let should_restore = {
+            let state = self.state.borrow();
+            state
+                .discover_detail_focus
+                .as_ref()
+                .map(|pkg| pkg.name == package)
+                .unwrap_or(false)
+        };
+
+        if should_restore && !self.focus_discover_package(package, false) {
+            self.update_discover_details();
         }
     }
 

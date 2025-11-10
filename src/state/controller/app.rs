@@ -437,6 +437,16 @@ impl AppController {
             ));
         self.widgets
             .tools
+            .cache_clean_button
+            .connect_clicked(glib::clone!(
+                #[strong(rename_to = controller)]
+                self,
+                move |_| {
+                    controller.on_cache_clean_requested();
+                }
+            ));
+        self.widgets
+            .tools
             .pkgdb_button
             .connect_clicked(glib::clone!(
                 #[strong(rename_to = controller)]
@@ -810,6 +820,16 @@ impl AppController {
         }
     }
 
+    pub(crate) fn set_waypoint_before_upgrades(&self, enabled: bool, persist: bool) {
+        if persist {
+            {
+                let mut settings = self.settings.borrow_mut();
+                settings.waypoint_before_upgrades = enabled;
+            }
+            self.persist_settings();
+        }
+    }
+
     pub(crate) fn confirm_action<F>(
         self: &Rc<Self>,
         heading: &str,
@@ -1060,6 +1080,9 @@ impl AppController {
             AppMessage::MirrorsDetected { mirrors } => {
                 self.finish_mirror_detection(mirrors);
             }
+            AppMessage::SnapshotComplete { result } => {
+                self.finish_snapshot_creation(result);
+            }
         }
     }
 
@@ -1102,6 +1125,72 @@ impl AppController {
         self.show_toast("Detected active mirrors updated.");
         if let Some(window) = self.mirrors_window.borrow().as_ref() {
             window.queue_draw();
+        }
+    }
+
+    fn finish_snapshot_creation(self: &Rc<Self>, result: crate::waypoint::SnapshotResult) {
+        use crate::waypoint::SnapshotResult;
+
+        // Check if we were waiting for a snapshot before update
+        let pending_update = {
+            let mut state = self.state.borrow_mut();
+            state.footer_message.take()
+        };
+
+        let (package, from_all) = if let Some(pending) = pending_update {
+            if pending.starts_with("snapshot_pending:") {
+                let parts: Vec<&str> = pending.split(':').collect();
+                if parts.len() == 3 {
+                    (parts[1].to_string(), parts[2] == "true")
+                } else {
+                    return;
+                }
+            } else {
+                return;
+            }
+        } else {
+            return;
+        };
+
+        // Handle snapshot result
+        match result {
+            SnapshotResult::Success(snapshot_name) => {
+                self.show_toast(&format!("Snapshot created: {}", snapshot_name));
+                // Proceed with update
+                self.execute_update(package, from_all);
+            }
+            SnapshotResult::Failure(error) => {
+                // Show error toast with option to proceed anyway
+                let toast = adw::Toast::builder()
+                    .title(&format!("Snapshot failed: {}", error))
+                    .button_label("Update Anyway")
+                    .timeout(10)  // 10 seconds
+                    .build();
+
+                let controller = Rc::clone(self);
+                let package_clone = package.clone();
+                toast.connect_button_clicked(move |_| {
+                    controller.execute_update(package_clone.clone(), from_all);
+                });
+
+                self.widgets.toast_overlay.add_toast(toast);
+            }
+            SnapshotResult::Timeout => {
+                // Show timeout toast with option to proceed anyway
+                let toast = adw::Toast::builder()
+                    .title("Snapshot creation timed out")
+                    .button_label("Update Anyway")
+                    .timeout(10)  // 10 seconds
+                    .build();
+
+                let controller = Rc::clone(self);
+                let package_clone = package.clone();
+                toast.connect_button_clicked(move |_| {
+                    controller.execute_update(package_clone.clone(), from_all);
+                });
+
+                self.widgets.toast_overlay.add_toast(toast);
+            }
         }
     }
 
@@ -1863,6 +1952,23 @@ impl AppController {
         notify_switch_row.add_suffix(&notify_switch);
         notify_switch_row.set_activatable_widget(Some(&notify_switch));
         updates_group.add(&notify_switch_row);
+
+        // Waypoint integration (only show if btrfs + waypoint available)
+        let waypoint_switch_opt = if crate::waypoint::should_enable_integration() {
+            let waypoint_switch_row = adw::ActionRow::builder()
+                .title("Create snapshots before system updates")
+                .subtitle("Requires Waypoint to create Btrfs snapshots")
+                .build();
+            let waypoint_switch = gtk::Switch::builder().valign(gtk::Align::Center).build();
+            waypoint_switch.set_active(self.settings.borrow().waypoint_before_upgrades);
+            waypoint_switch_row.add_suffix(&waypoint_switch);
+            waypoint_switch_row.set_activatable_widget(Some(&waypoint_switch));
+            updates_group.add(&waypoint_switch_row);
+            Some(waypoint_switch)
+        } else {
+            None
+        };
+
         general_page.add(&updates_group);
 
         let install_group = adw::PreferencesGroup::builder()
@@ -1955,6 +2061,13 @@ impl AppController {
         notify_switch.connect_active_notify(move |switcher| {
             controller_clone.set_notify_updates(switcher.is_active(), true);
         });
+
+        if let Some(waypoint_switch) = waypoint_switch_opt {
+            let controller_clone = Rc::clone(self);
+            waypoint_switch.connect_active_notify(move |switcher| {
+                controller_clone.set_waypoint_before_upgrades(switcher.is_active(), true);
+            });
+        }
 
         prefs.present();
     }

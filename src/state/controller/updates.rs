@@ -1254,7 +1254,34 @@ impl AppController {
     }
 
     pub(crate) fn start_update(self: &Rc<Self>, package: String, from_all: bool) {
-        self.execute_update(package, from_all);
+        // Check if we should create a waypoint snapshot before system updates
+        if from_all && self.settings.borrow().waypoint_before_upgrades {
+            let package_count = self.state.borrow().available_updates.len();
+            self.create_snapshot_then_update(package, from_all, package_count);
+        } else {
+            self.execute_update(package, from_all);
+        }
+    }
+
+    fn create_snapshot_then_update(self: &Rc<Self>, package: String, from_all: bool, package_count: usize) {
+        // Show toast that snapshot is being created
+        self.show_toast("Creating snapshot before upgrade...");
+
+        let sender = self.sender.clone();
+
+        // Spawn snapshot creation in background thread
+        thread::spawn(move || {
+            let result = crate::waypoint::create_pre_upgrade_snapshot(package_count);
+            let _ = sender.send(AppMessage::SnapshotComplete { result });
+        });
+
+        // Store the package and from_all flag so we can continue after snapshot
+        // We'll use the state to store these temporarily
+        {
+            let mut state = self.state.borrow_mut();
+            // Store in footer_message temporarily as a marker that we're waiting for snapshot
+            state.footer_message = Some(format!("snapshot_pending:{}:{}", package, from_all));
+        }
     }
 
     pub(crate) fn start_update_multiple(self: &Rc<Self>, packages: Vec<String>) {
@@ -1264,7 +1291,7 @@ impl AppController {
         self.execute_update_multiple(packages);
     }
 
-    fn execute_update(self: &Rc<Self>, package: String, from_all: bool) {
+    pub(crate) fn execute_update(self: &Rc<Self>, package: String, from_all: bool) {
         {
             let state = self.state.borrow();
             if state.update_in_progress || state.updates_loading {

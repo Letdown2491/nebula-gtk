@@ -83,6 +83,7 @@ pub(crate) struct AppState {
     pub(crate) maintenance_pkgdb: MaintenanceActionState,
     pub(crate) maintenance_reconfigure: MaintenanceActionState,
     pub(crate) maintenance_alternatives: MaintenanceActionState,
+    pub(crate) maintenance_cache_clean: MaintenanceActionState,
     pub(crate) selected_mirror_ids: Vec<String>,
 }
 
@@ -200,6 +201,9 @@ pub(crate) enum AppMessage {
     },
     MirrorsDetected {
         mirrors: Vec<String>,
+    },
+    SnapshotComplete {
+        result: crate::waypoint::SnapshotResult,
     },
 }
 

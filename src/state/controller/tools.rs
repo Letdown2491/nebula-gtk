@@ -14,7 +14,7 @@ use crate::state::types::AppMessage;
 use crate::types::CommandResult;
 use crate::xbps::{
     run_xbps_alternatives_list, run_xbps_pkgdb_check, run_xbps_reconfigure_all,
-    run_xbps_remove_orphans, summarize_output_line, truncate_for_summary,
+    run_xbps_remove_cache, run_xbps_remove_orphans, summarize_output_line, truncate_for_summary,
 };
 
 impl AppController {
@@ -34,6 +34,10 @@ impl AppController {
         self.start_maintenance_task(MaintenanceTask::Alternatives);
     }
 
+    pub(crate) fn on_cache_clean_requested(self: &Rc<Self>) {
+        self.start_maintenance_task(MaintenanceTask::CacheClean);
+    }
+
     pub(crate) fn start_maintenance_task(self: &Rc<Self>, task: MaintenanceTask) {
         {
             let mut state = self.state.borrow_mut();
@@ -42,6 +46,7 @@ impl AppController {
                 MaintenanceTask::Pkgdb => &mut state.maintenance_pkgdb,
                 MaintenanceTask::Reconfigure => &mut state.maintenance_reconfigure,
                 MaintenanceTask::Alternatives => &mut state.maintenance_alternatives,
+                MaintenanceTask::CacheClean => &mut state.maintenance_cache_clean,
             };
 
             if action_state.running {
@@ -65,6 +70,7 @@ impl AppController {
                 MaintenanceTask::Pkgdb => run_xbps_pkgdb_check(),
                 MaintenanceTask::Reconfigure => run_xbps_reconfigure_all(),
                 MaintenanceTask::Alternatives => run_xbps_alternatives_list(),
+                MaintenanceTask::CacheClean => run_xbps_remove_cache(),
             };
             let _ = sender.send(AppMessage::MaintenanceFinished { task, result });
         });
@@ -127,6 +133,7 @@ impl AppController {
             let mut state = self.state.borrow_mut();
             let action_state = match task {
                 MaintenanceTask::Cleanup => &mut state.maintenance_cleanup,
+                MaintenanceTask::CacheClean => &mut state.maintenance_cache_clean,
                 MaintenanceTask::Pkgdb => &mut state.maintenance_pkgdb,
                 MaintenanceTask::Reconfigure => &mut state.maintenance_reconfigure,
                 MaintenanceTask::Alternatives => &mut state.maintenance_alternatives,
@@ -158,6 +165,13 @@ impl AppController {
             &self.widgets.tools.cleanup_button,
             &self.widgets.tools.cleanup_spinner,
             &self.widgets.tools.cleanup_status,
+        );
+        self.update_maintenance_row(
+            MaintenanceTask::CacheClean,
+            &state.maintenance_cache_clean,
+            &self.widgets.tools.cache_clean_button,
+            &self.widgets.tools.cache_clean_spinner,
+            &self.widgets.tools.cache_clean_status,
         );
         self.update_maintenance_row(
             MaintenanceTask::Pkgdb,
@@ -270,6 +284,7 @@ pub(crate) enum MaintenanceTask {
     Pkgdb,
     Reconfigure,
     Alternatives,
+    CacheClean,
 }
 
 #[derive(Default)]
@@ -325,6 +340,14 @@ pub(crate) fn maintenance_copy(task: MaintenanceTask) -> MaintenanceCopy {
             failure_prefix: "Couldn't load alternatives",
             success_toast: "Alternatives list ready.",
             failure_toast: "Failed to load alternatives.",
+        },
+        MaintenanceTask::CacheClean => MaintenanceCopy {
+            idle_text: "Ready to clean cache.",
+            running_text: "Cleaning obsolete cached packages...",
+            success_message: "Cache cleaned successfully.",
+            failure_prefix: "Cache cleaning encountered an issue",
+            success_toast: "Package cache cleaned.",
+            failure_toast: "Cache cleaning failed.",
         },
     }
 }

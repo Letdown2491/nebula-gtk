@@ -97,6 +97,8 @@ pub struct AppSettings {
     pub notify_updates: bool,
     #[serde(default)]
     pub mirror_selection: Vec<String>,
+    #[serde(default = "default_waypoint_before_upgrades")]
+    pub waypoint_before_upgrades: bool,
 }
 
 fn default_auto_check_enabled() -> bool {
@@ -109,6 +111,10 @@ fn default_confirm_pref() -> bool {
 
 fn default_notify_updates() -> bool {
     true
+}
+
+fn default_waypoint_before_upgrades() -> bool {
+    crate::waypoint::should_enable_integration()
 }
 
 impl Default for AppSettings {
@@ -125,6 +131,7 @@ impl Default for AppSettings {
             theme_preference: ThemePreference::System,
             notify_updates: default_notify_updates(),
             mirror_selection: Vec::new(),
+            waypoint_before_upgrades: default_waypoint_before_upgrades(),
         }
     }
 }

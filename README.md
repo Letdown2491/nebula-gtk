@@ -2,6 +2,8 @@
 
 Nebula is a GTK/libadwaita front-end for browsing and managing Void Linux packages, using the XBPS tooling in the background.
 
+Optionally, for systems using a Btrfs filesystem, Nebula integrates with [Waypoint](https://github.com/Letdown2491/waypoint-gtk/) (if installed and using Nebula >= 1.3.0) to automatically create system snapshots before performing a system upgrade.
+
 ## Screenshots
 
 | ![Discover page](assets/screenshots/1-discover.png) | ![App Details](assets/screenshots/8-dependencies.png) |

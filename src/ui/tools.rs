@@ -11,6 +11,9 @@ pub(crate) struct ToolsWidgets {
     pub(crate) cleanup_button: gtk::Button,
     pub(crate) cleanup_spinner: gtk::Spinner,
     pub(crate) cleanup_status: gtk::Label,
+    pub(crate) cache_clean_button: gtk::Button,
+    pub(crate) cache_clean_spinner: gtk::Spinner,
+    pub(crate) cache_clean_status: gtk::Label,
     pub(crate) pkgdb_button: gtk::Button,
     pub(crate) pkgdb_spinner: gtk::Spinner,
     pub(crate) pkgdb_status: gtk::Label,
@@ -92,6 +95,16 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
         maintenance_copy(MaintenanceTask::Cleanup).idle_text,
     );
     quick_group.add(&cleanup_panel);
+
+    let (cache_clean_panel, cache_clean_button, cache_clean_status, cache_clean_spinner) = build_tools_action_row(
+        "Clean package cache",
+        "Remove obsolete package files from download cache.",
+        "Clean cache",
+        "Runs \"xbps-remove -o\" to remove old cached package versions.",
+        maintenance_copy(MaintenanceTask::CacheClean).idle_text,
+    );
+    quick_group.add(&cache_clean_panel);
+
     content.append(&quick_group);
 
     let repair_group = adw::PreferencesGroup::builder()
@@ -141,6 +154,9 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
         cleanup_button,
         cleanup_spinner,
         cleanup_status,
+        cache_clean_button,
+        cache_clean_spinner,
+        cache_clean_status,
         pkgdb_button,
         pkgdb_spinner,
         pkgdb_status,

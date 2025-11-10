@@ -511,6 +511,10 @@ pub(crate) fn run_xbps_remove_orphans() -> Result<CommandResult, String> {
     run_privileged_command("xbps-remove", &["-O"])
 }
 
+pub(crate) fn run_xbps_remove_cache() -> Result<CommandResult, String> {
+    run_privileged_command("xbps-remove", &["-o"])
+}
+
 pub(crate) fn run_xbps_pkgdb_hold(package: &str) -> Result<CommandResult, String> {
     run_privileged_command("xbps-pkgdb", &["-m", "hold", package])
 }

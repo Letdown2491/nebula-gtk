@@ -7,6 +7,7 @@ mod spotlight;
 mod state;
 mod types;
 mod ui;
+mod waypoint;
 mod xbps;
 
 use adw::prelude::*;

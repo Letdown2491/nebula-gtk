@@ -84,6 +84,8 @@ pub(crate) struct AppState {
     pub(crate) maintenance_reconfigure: MaintenanceActionState,
     pub(crate) maintenance_alternatives: MaintenanceActionState,
     pub(crate) maintenance_cache_clean: MaintenanceActionState,
+    pub(crate) tools_status_message: Option<String>,
+    pub(crate) tools_status_is_error: bool,
     pub(crate) selected_mirror_ids: Vec<String>,
 }
 

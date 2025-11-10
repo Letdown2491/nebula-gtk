@@ -435,16 +435,20 @@ impl AppController {
                     controller.on_cleanup_requested();
                 }
             ));
-        self.widgets
-            .tools
-            .cache_clean_button
-            .connect_clicked(glib::clone!(
-                #[strong(rename_to = controller)]
-                self,
-                move |_| {
-                    controller.on_cache_clean_requested();
-                }
-            ));
+        {
+            let spin_button = self.widgets.tools.cache_clean_spin_button.clone();
+            self.widgets
+                .tools
+                .cache_clean_button
+                .connect_clicked(glib::clone!(
+                    #[strong(rename_to = controller)]
+                    self,
+                    move |_| {
+                        let keep_n = spin_button.value() as u32;
+                        controller.on_cache_clean_requested(keep_n);
+                    }
+                ));
+        }
         self.widgets
             .tools
             .pkgdb_button

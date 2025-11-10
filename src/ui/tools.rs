@@ -4,25 +4,22 @@ use libadwaita as adw;
 
 use adw::prelude::*;
 
-use crate::state::controller::tools::{MaintenanceTask, maintenance_copy};
 
 #[derive(Clone)]
 pub(crate) struct ToolsWidgets {
     pub(crate) cleanup_button: gtk::Button,
     pub(crate) cleanup_spinner: gtk::Spinner,
-    pub(crate) cleanup_status: gtk::Label,
     pub(crate) cache_clean_button: gtk::Button,
     pub(crate) cache_clean_spinner: gtk::Spinner,
-    pub(crate) cache_clean_status: gtk::Label,
+    pub(crate) cache_clean_spin_button: gtk::SpinButton,
     pub(crate) pkgdb_button: gtk::Button,
     pub(crate) pkgdb_spinner: gtk::Spinner,
-    pub(crate) pkgdb_status: gtk::Label,
     pub(crate) reconfigure_button: gtk::Button,
     pub(crate) reconfigure_spinner: gtk::Spinner,
-    pub(crate) reconfigure_status: gtk::Label,
     pub(crate) alternatives_button: gtk::Button,
     pub(crate) alternatives_spinner: gtk::Spinner,
-    pub(crate) alternatives_status: gtk::Label,
+    pub(crate) status_label: gtk::Label,
+    pub(crate) status_revealer: gtk::Revealer,
 }
 
 pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
@@ -87,23 +84,62 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
         .description("Cleanup utilities to keep old packages from clogging up your system.")
         .build();
 
-    let (cleanup_panel, cleanup_button, cleanup_status, cleanup_spinner) = build_tools_action_row(
+    let (cleanup_row, cleanup_button, cleanup_spinner) = build_tools_action_row(
         "Remove orphaned packages",
         "Clean out unused dependencies.",
         "Run cleanup",
         "Runs \"xbps-remove -O\" to prune orphaned packages.",
-        maintenance_copy(MaintenanceTask::Cleanup).idle_text,
     );
-    quick_group.add(&cleanup_panel);
+    quick_group.add(&cleanup_row);
 
-    let (cache_clean_panel, cache_clean_button, cache_clean_status, cache_clean_spinner) = build_tools_action_row(
-        "Clean package cache",
-        "Remove obsolete package files from download cache.",
-        "Clean cache",
-        "Runs \"xbps-remove -o\" to remove old cached package versions.",
-        maintenance_copy(MaintenanceTask::CacheClean).idle_text,
-    );
-    quick_group.add(&cache_clean_panel);
+    // Cache clean row with SpinButton for keeping N versions
+    let cache_clean_row = adw::ActionRow::builder()
+        .title("Clean package cache")
+        .subtitle("Remove old package versions from cache.")
+        .build();
+    cache_clean_row.set_activatable(false);
+
+    let cache_clean_spinner = gtk::Spinner::new();
+    cache_clean_spinner.set_visible(false);
+    cache_clean_spinner.set_valign(gtk::Align::Center);
+    cache_clean_spinner.set_size_request(16, 16);
+
+    // SpinButton for keeping N versions (1-5)
+    let cache_clean_adjustment = gtk::Adjustment::new(1.0, 1.0, 5.0, 1.0, 1.0, 0.0);
+    let cache_clean_spin_button = gtk::SpinButton::builder()
+        .adjustment(&cache_clean_adjustment)
+        .valign(gtk::Align::Center)
+        .width_chars(2)
+        .build();
+    cache_clean_spin_button.set_tooltip_text(Some("Number of package versions to keep in cache"));
+
+    let keep_label = gtk::Label::builder()
+        .label("Keep:")
+        .valign(gtk::Align::Center)
+        .build();
+    keep_label.add_css_class("dim-label");
+
+    let cache_clean_button = gtk::Button::builder()
+        .label("Clean cache")
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .build();
+    cache_clean_button.set_focus_on_click(false);
+    cache_clean_button.set_tooltip_text(Some("Clean package cache, keeping the selected number of versions"));
+
+    let cache_controls = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .build();
+    cache_controls.append(&keep_label);
+    cache_controls.append(&cache_clean_spin_button);
+    cache_controls.append(&cache_clean_spinner);
+    cache_controls.append(&cache_clean_button);
+    cache_clean_row.add_suffix(&cache_controls);
+
+    quick_group.add(&cache_clean_row);
 
     content.append(&quick_group);
 
@@ -114,24 +150,22 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
         )
         .build();
 
-    let (pkgdb_panel, pkgdb_button, pkgdb_status, pkgdb_spinner) = build_tools_action_row(
+    let (pkgdb_row, pkgdb_button, pkgdb_spinner) = build_tools_action_row(
         "Verify package database",
         "Checks and repairs package metadata. Handy after forced power-offs.",
         "Run verification",
         "Runs \"xbps-pkgdb -a\" to verify package metadata.",
-        maintenance_copy(MaintenanceTask::Pkgdb).idle_text,
     );
-    repair_group.add(&pkgdb_panel);
+    repair_group.add(&pkgdb_row);
 
-    let (reconfigure_panel, reconfigure_button, reconfigure_status, reconfigure_spinner) =
+    let (reconfigure_row, reconfigure_button, reconfigure_spinner) =
         build_tools_action_row(
             "Reconfigure everything",
             "Replays post-install hooks for every package. Give it time to finish.",
             "Run reconfigure",
             "Runs \"xbps-reconfigure -a\" to re-run post-install hooks.",
-            maintenance_copy(MaintenanceTask::Reconfigure).idle_text,
         );
-    repair_group.add(&reconfigure_panel);
+    repair_group.add(&reconfigure_row);
     content.append(&repair_group);
 
     let alternatives_group = adw::PreferencesGroup::builder()
@@ -139,33 +173,58 @@ pub(crate) fn build_page() -> (gtk::Box, ToolsWidgets) {
         .description("See which providers are currently registered before you switch defaults.")
         .build();
 
-    let (alternatives_panel, alternatives_button, alternatives_status, alternatives_spinner) =
+    let (alternatives_row, alternatives_button, alternatives_spinner) =
         build_tools_action_row(
             "List available alternatives",
             "Shows every registered provider so you know what is installed.",
             "Show list",
             "Runs \"xbps-alternatives -l\" and displays the output.",
-            maintenance_copy(MaintenanceTask::Alternatives).idle_text,
         );
-    alternatives_group.add(&alternatives_panel);
+    alternatives_group.add(&alternatives_row);
     content.append(&alternatives_group);
+
+    // Footer status area
+    let status_revealer = gtk::Revealer::builder()
+        .transition_type(gtk::RevealerTransitionType::SlideUp)
+        .transition_duration(200)
+        .reveal_child(false)
+        .build();
+
+    let status_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .halign(gtk::Align::Center)
+        .spacing(8)
+        .margin_top(16)
+        .margin_bottom(8)
+        .margin_start(32)
+        .margin_end(32)
+        .build();
+    status_box.add_css_class("toolbar");
+
+    let status_label = gtk::Label::builder()
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
+        .halign(gtk::Align::Center)
+        .build();
+
+    status_box.append(&status_label);
+    status_revealer.set_child(Some(&status_box));
+    content.append(&status_revealer);
 
     let widgets = ToolsWidgets {
         cleanup_button,
         cleanup_spinner,
-        cleanup_status,
         cache_clean_button,
         cache_clean_spinner,
-        cache_clean_status,
+        cache_clean_spin_button,
         pkgdb_button,
         pkgdb_spinner,
-        pkgdb_status,
         reconfigure_button,
         reconfigure_spinner,
-        reconfigure_status,
         alternatives_button,
         alternatives_spinner,
-        alternatives_status,
+        status_label,
+        status_revealer,
     };
 
     (container, widgets)
@@ -176,8 +235,7 @@ fn build_tools_action_row(
     blurb: &str,
     button_label: &str,
     tooltip: &str,
-    initial_status: &str,
-) -> (gtk::Box, gtk::Button, gtk::Label, gtk::Spinner) {
+) -> (adw::ActionRow, gtk::Button, gtk::Spinner) {
     let row = adw::ActionRow::builder()
         .title(title)
         .subtitle(blurb)
@@ -209,22 +267,5 @@ fn build_tools_action_row(
     controls.append(&button);
     row.add_suffix(&controls);
 
-    let status_label = gtk::Label::builder()
-        .halign(gtk::Align::Start)
-        .xalign(0.0)
-        .wrap(true)
-        .wrap_mode(pango::WrapMode::WordChar)
-        .build();
-    status_label.add_css_class("caption");
-    status_label.add_css_class("dim-label");
-    status_label.set_text(initial_status);
-
-    let wrapper = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(4)
-        .build();
-    wrapper.append(&row);
-    wrapper.append(&status_label);
-
-    (wrapper, button, status_label, spinner)
+    (row, button, spinner)
 }

@@ -8,13 +8,12 @@ use adw::prelude::*;
 
 use chrono::{DateTime, Utc};
 
-use crate::helpers::format_relative_time;
 use crate::state::controller::AppController;
 use crate::state::types::AppMessage;
 use crate::types::CommandResult;
 use crate::xbps::{
     run_xbps_alternatives_list, run_xbps_pkgdb_check, run_xbps_reconfigure_all,
-    run_xbps_remove_cache, run_xbps_remove_orphans, summarize_output_line, truncate_for_summary,
+    run_xbps_remove_cache, run_xbps_remove_orphans, summarize_output_line,
 };
 
 impl AppController {
@@ -34,8 +33,57 @@ impl AppController {
         self.start_maintenance_task(MaintenanceTask::Alternatives);
     }
 
-    pub(crate) fn on_cache_clean_requested(self: &Rc<Self>) {
-        self.start_maintenance_task(MaintenanceTask::CacheClean);
+    pub(crate) fn on_cache_clean_requested(self: &Rc<Self>, keep_n: u32) {
+        if keep_n == 1 {
+            // Use fast path with xbps-remove -o
+            self.start_maintenance_task(MaintenanceTask::CacheClean);
+        } else {
+            // Use custom cleanup logic
+            self.start_cache_clean_keep_n(keep_n);
+        }
+    }
+
+    fn start_cache_clean_keep_n(self: &Rc<Self>, keep_n: u32) {
+        {
+            let mut state = self.state.borrow_mut();
+            let action_state = &mut state.maintenance_cache_clean;
+
+            if action_state.running {
+                return;
+            }
+
+            action_state.running = true;
+            action_state.last_success = None;
+            action_state.last_message = None;
+            action_state.last_stdout = None;
+            action_state.last_stderr = None;
+            action_state.last_finished_at = None;
+        }
+
+        self.update_tools_actions();
+
+        let sender = self.sender.clone();
+        thread::spawn(move || {
+            use crate::xbps::clean_cache_keep_n;
+            use crate::xbps::format_size;
+
+            let result = match clean_cache_keep_n(keep_n) {
+                Ok((count, size)) => {
+                    let size_str = format_size(size);
+                    Ok(CommandResult {
+                        code: Some(0),
+                        stdout: format!("Removed {} package(s), freed {}", count, size_str),
+                        stderr: String::new(),
+                    })
+                }
+                Err(e) => Err(e),
+            };
+
+            let _ = sender.send(AppMessage::MaintenanceFinished {
+                task: MaintenanceTask::CacheClean,
+                result,
+            });
+        });
     }
 
     pub(crate) fn start_maintenance_task(self: &Rc<Self>, task: MaintenanceTask) {
@@ -144,6 +192,10 @@ impl AppController {
             action_state.last_stdout = stdout_store.clone();
             action_state.last_stderr = stderr_store.clone();
             action_state.last_finished_at = Some(finished_at);
+
+            // Update footer status
+            state.tools_status_message = Some(status_message.clone());
+            state.tools_status_is_error = !success;
         }
 
         self.update_tools_actions();
@@ -164,117 +216,91 @@ impl AppController {
             &state.maintenance_cleanup,
             &self.widgets.tools.cleanup_button,
             &self.widgets.tools.cleanup_spinner,
-            &self.widgets.tools.cleanup_status,
         );
         self.update_maintenance_row(
             MaintenanceTask::CacheClean,
             &state.maintenance_cache_clean,
             &self.widgets.tools.cache_clean_button,
             &self.widgets.tools.cache_clean_spinner,
-            &self.widgets.tools.cache_clean_status,
         );
         self.update_maintenance_row(
             MaintenanceTask::Pkgdb,
             &state.maintenance_pkgdb,
             &self.widgets.tools.pkgdb_button,
             &self.widgets.tools.pkgdb_spinner,
-            &self.widgets.tools.pkgdb_status,
         );
         self.update_maintenance_row(
             MaintenanceTask::Reconfigure,
             &state.maintenance_reconfigure,
             &self.widgets.tools.reconfigure_button,
             &self.widgets.tools.reconfigure_spinner,
-            &self.widgets.tools.reconfigure_status,
         );
         self.update_maintenance_row(
             MaintenanceTask::Alternatives,
             &state.maintenance_alternatives,
             &self.widgets.tools.alternatives_button,
             &self.widgets.tools.alternatives_spinner,
-            &self.widgets.tools.alternatives_status,
         );
+        drop(state);
+        self.update_tools_status_footer();
     }
 
     fn update_maintenance_row(
         &self,
-        task: MaintenanceTask,
+        _task: MaintenanceTask,
         state: &MaintenanceActionState,
         button: &gtk::Button,
         spinner: &gtk::Spinner,
-        status_label: &gtk::Label,
     ) {
-        let copy = maintenance_copy(task);
-
         if state.running {
             button.set_sensitive(false);
             spinner.set_visible(true);
             spinner.start();
-            status_label.remove_css_class("error");
-            status_label.add_css_class("dim-label");
-            status_label.set_text(copy.running_text);
-            status_label.set_tooltip_text(None);
             return;
         }
 
         spinner.stop();
         spinner.set_visible(false);
         button.set_sensitive(true);
+    }
 
-        let tooltip_text = match state.last_success {
-            Some(true) => state.last_stdout.as_ref().and_then(|text| {
-                let trimmed = text.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(truncate_for_summary(trimmed, 512))
-                }
-            }),
-            Some(false) => state.last_stderr.as_ref().and_then(|text| {
-                let trimmed = text.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(truncate_for_summary(trimmed, 512))
-                }
-            }),
-            None => None,
-        };
-        status_label.set_tooltip_text(tooltip_text.as_deref());
+    fn update_tools_status_footer(&self) {
+        let state = self.state.borrow();
 
-        status_label.remove_css_class("error");
-        status_label.remove_css_class("dim-label");
-
-        let mut message = state
-            .last_message
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| copy.idle_text.to_string());
-
-        if let Some(finished_at) = state.last_finished_at {
-            let relative = format_relative_time(finished_at);
-            if state.last_message.is_some() {
-                let qualifier = match state.last_success {
-                    Some(true) => "Ran",
-                    Some(false) => "Attempted",
-                    None => "Ran",
-                };
-                message.push_str(" • ");
-                message.push_str(&format!("{} {}", qualifier, relative));
-            } else {
-                message.push_str(" Last run ");
-                message.push_str(&relative);
-                message.push('.');
-            }
-        }
-
-        if state.last_success == Some(false) {
-            status_label.add_css_class("error");
+        // Check if any task is currently running
+        let running_task = if state.maintenance_cleanup.running {
+            Some((MaintenanceTask::Cleanup, &state.maintenance_cleanup))
+        } else if state.maintenance_cache_clean.running {
+            Some((MaintenanceTask::CacheClean, &state.maintenance_cache_clean))
+        } else if state.maintenance_pkgdb.running {
+            Some((MaintenanceTask::Pkgdb, &state.maintenance_pkgdb))
+        } else if state.maintenance_reconfigure.running {
+            Some((MaintenanceTask::Reconfigure, &state.maintenance_reconfigure))
+        } else if state.maintenance_alternatives.running {
+            Some((MaintenanceTask::Alternatives, &state.maintenance_alternatives))
         } else {
-            status_label.add_css_class("dim-label");
-        }
+            None
+        };
 
-        status_label.set_text(message.as_str());
+        if let Some((task, _)) = running_task {
+            let copy = maintenance_copy(task);
+            self.widgets.tools.status_label.set_text(copy.running_text);
+            self.widgets.tools.status_label.remove_css_class("success");
+            self.widgets.tools.status_label.remove_css_class("error");
+            self.widgets.tools.status_revealer.set_reveal_child(true);
+        } else if let Some(ref message) = state.tools_status_message {
+            self.widgets.tools.status_label.set_text(message);
+            self.widgets.tools.status_label.remove_css_class("success");
+            self.widgets.tools.status_label.remove_css_class("error");
+            if state.tools_status_is_error {
+                self.widgets.tools.status_label.add_css_class("error");
+            } else {
+                self.widgets.tools.status_label.add_css_class("success");
+            }
+            self.widgets.tools.status_revealer.set_reveal_child(true);
+        } else {
+            self.widgets.tools.status_revealer.set_reveal_child(false);
+        }
     }
 }
 
@@ -299,6 +325,7 @@ pub(crate) struct MaintenanceActionState {
 
 #[derive(Clone, Copy)]
 pub(crate) struct MaintenanceCopy {
+    #[allow(dead_code)]
     pub(crate) idle_text: &'static str,
     pub(crate) running_text: &'static str,
     pub(crate) success_message: &'static str,

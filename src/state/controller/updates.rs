@@ -35,8 +35,9 @@ impl AppController {
 
     pub(crate) fn set_status_text(&self, text: &str) {
         let label = &self.widgets.updates.status_label;
+        let revealer = &self.widgets.updates.status_revealer;
         label.set_text(text);
-        label.set_visible(!text.is_empty());
+        revealer.set_reveal_child(!text.is_empty());
     }
 
     pub(crate) fn set_summary_text(&self, text: &str) {
@@ -249,6 +250,12 @@ impl AppController {
             version_label.set_valign(gtk::Align::Center);
             version_label.set_margin_end(12);
             row.add_suffix(&version_label);
+        }
+
+        // Add operation status indicator if there's a recent operation
+        if let Some(status_indicator) = self.create_operation_status_indicator(&pkg.name) {
+            status_indicator.set_margin_end(12);
+            row.add_suffix(&status_indicator);
         }
 
         let button_label = status
@@ -1349,6 +1356,30 @@ impl AppController {
         self.update_updates_detail();
         self.update_update_controls();
 
+        // Track operation start for each package
+        {
+            let state = self.state.borrow();
+            for pkg_name in &affected_packages {
+                if let Some(pkg) = state.available_updates.iter().find(|p| &p.name == pkg_name) {
+                    let from_version = pkg.previous_version.clone().unwrap_or_else(|| "unknown".to_string());
+                    let to_version = pkg.version.clone();
+                    let command = if from_all {
+                        "xbps-install -Su".to_string()
+                    } else {
+                        format!("xbps-install -u {}", pkg_name)
+                    };
+                    self.start_operation_tracking(
+                        pkg_name.clone(),
+                        crate::state::types::OperationType::Update {
+                            from_version,
+                            to_version,
+                        },
+                        command,
+                    );
+                }
+            }
+        }
+
         let sender = self.sender.clone();
         if from_all {
             let packages_for_thread = affected_packages.clone();
@@ -1410,6 +1441,26 @@ impl AppController {
         self.update_updates_detail();
         self.update_update_controls();
 
+        // Track operation start for each package
+        {
+            let state = self.state.borrow();
+            for pkg_name in &packages {
+                if let Some(pkg) = state.available_updates.iter().find(|p| &p.name == pkg_name) {
+                    let from_version = pkg.previous_version.clone().unwrap_or_else(|| "unknown".to_string());
+                    let to_version = pkg.version.clone();
+                    let command = format!("xbps-install -u {}", pkg_name);
+                    self.start_operation_tracking(
+                        pkg_name.clone(),
+                        crate::state::types::OperationType::Update {
+                            from_version,
+                            to_version,
+                        },
+                        command,
+                    );
+                }
+            }
+        }
+
         let affected = packages.clone();
         let args = build_update_packages_args(&affected);
         let sender = self.sender.clone();
@@ -1437,8 +1488,13 @@ impl AppController {
         self.set_check_buttons_sensitive(true);
 
         match result {
-            Ok(command) => {
+            Ok(ref command) => {
                 if command.success() {
+                    // Complete operation tracking for each package
+                    for pkg_name in &packages {
+                        self.complete_operation_tracking(pkg_name, &result);
+                    }
+
                     self.clear_package_status(&packages);
                     if all {
                         let message = "System updated successfully.";
@@ -1510,6 +1566,11 @@ impl AppController {
                         self.withdraw_updates_notification();
                     }
                 } else {
+                    // Complete operation tracking for each package (failed)
+                    for pkg_name in &packages {
+                        self.complete_operation_tracking(pkg_name, &result);
+                    }
+
                     self.set_packages_status(&packages, UpdateStatus::Failed);
                     let mut detail = command.stderr.trim();
                     if detail.is_empty() {
@@ -1538,7 +1599,12 @@ impl AppController {
                     self.update_update_controls();
                 }
             }
-            Err(err) => {
+            Err(ref err) => {
+                // Complete operation tracking for each package (error)
+                for pkg_name in &packages {
+                    self.complete_operation_tracking(pkg_name, &result);
+                }
+
                 self.set_packages_status(&packages, UpdateStatus::Failed);
                 let message = if all {
                     format!("Failed to install updates: {}", err)

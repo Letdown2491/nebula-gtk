@@ -1,6 +1,8 @@
 # Changelog
 
-## 1.3.0
+## 1.3.5
+- Added Recent Activity to hamburger menu to track install/remove/update operations.
+- Added activity indicators to packages to easily distinguish success/error states in install/remove/update operations.
 - Added cached package cleanup hooked to 'xbps-remove -o'.
 - Added optional spinner to allow users to select how many cached package versions to keep (max 5).
 - Added Waypoint module to integrate Btrfs snapshot creation on system upgrade.
@@ -8,6 +10,7 @@
 - Added dedicated start/end window controls plus mirrored header logos so the system layout moves the branding to the free side.
 - Wired notify::empty listeners to toggle which logo is shown as GNOME switches button placement, keeping the menu button available either way.
 - Moved Tools page notifications to application footer for cleaner UI and save vertical space.
+- Reordered menu items.
 
 ## 1.2.2
 - Added hold/unhold feature for installed packages to prevent updates on specific package versions.

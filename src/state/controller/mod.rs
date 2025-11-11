@@ -1,6 +1,7 @@
 pub(crate) mod app;
 pub(crate) mod discover;
 pub(crate) mod installed;
+pub(crate) mod operations;
 pub(crate) mod tools;
 pub(crate) mod updates;
 

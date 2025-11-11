@@ -698,6 +698,12 @@ impl AppController {
         action_stack.add_named(&progress, Some("progress"));
         action_stack.set_visible_child_name("button");
 
+        // Add operation status indicator if there's a recent operation
+        if let Some(status_indicator) = self.create_operation_status_indicator(&pkg.name) {
+            status_indicator.set_margin_end(12);
+            row.add_suffix(&status_indicator);
+        }
+
         row.add_suffix(&action_stack);
         self.discover_buttons
             .borrow_mut()

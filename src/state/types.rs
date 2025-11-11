@@ -10,6 +10,52 @@ use crate::state::controller::tools::{MaintenanceActionState, MaintenanceTask};
 use crate::types::{CommandResult, PackageInfo};
 use chrono::{DateTime, Utc};
 
+/// Type of package operation
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum OperationType {
+    Install,
+    Remove,
+    #[allow(dead_code)]
+    Update { from_version: String, to_version: String },
+}
+
+/// Status of an operation
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum OperationStatus {
+    InProgress,
+    Success,
+    #[allow(dead_code)]
+    Warning,
+    Failed,
+}
+
+/// A single package operation record
+#[derive(Clone, Debug)]
+pub(crate) struct PackageOperation {
+    pub package_name: String,
+    pub operation_type: OperationType,
+    pub status: OperationStatus,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub command: String,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    #[allow(dead_code)]
+    pub size_bytes: Option<u64>,
+    pub error_message: Option<String>,
+}
+
+impl PackageOperation {
+    pub(crate) fn duration_seconds(&self) -> Option<i64> {
+        self.completed_at.map(|end| (end - self.started_at).num_seconds())
+    }
+
+    pub(crate) fn is_complete(&self) -> bool {
+        self.completed_at.is_some()
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct AppState {
     pub(crate) search_results: Vec<PackageInfo>,
@@ -87,6 +133,8 @@ pub(crate) struct AppState {
     pub(crate) tools_status_message: Option<String>,
     pub(crate) tools_status_is_error: bool,
     pub(crate) selected_mirror_ids: Vec<String>,
+    pub(crate) operation_history: Vec<PackageOperation>,
+    pub(crate) max_operation_history: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

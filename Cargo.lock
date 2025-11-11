@@ -1265,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "nebula-gtk"
-version = "1.3.0"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "chrono",

@@ -41,7 +41,6 @@ pub(crate) struct AppController {
     pub(crate) preferences_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) mirrors_window: RefCell<Option<adw::PreferencesWindow>>,
     pub(crate) about_dialog: RefCell<Option<adw::MessageDialog>>,
-    pub(crate) update_log_dialog: RefCell<Option<gtk::Dialog>>,
     pub(crate) update_log_buffer: RefCell<Option<gtk::TextBuffer>>,
     pub(crate) update_log_view: RefCell<Option<gtk::TextView>>,
 }
@@ -91,7 +90,6 @@ impl AppController {
             preferences_window: RefCell::new(None),
             mirrors_window: RefCell::new(None),
             about_dialog: RefCell::new(None),
-            update_log_dialog: RefCell::new(None),
             update_log_buffer: RefCell::new(None),
             update_log_view: RefCell::new(None),
         }
@@ -592,16 +590,6 @@ impl AppController {
                     controller.refresh_updates(false);
                 }
             ));
-        self.widgets
-            .updates
-            .logs_button
-            .connect_clicked(glib::clone!(
-                #[strong(rename_to = controller)]
-                self,
-                move |_| {
-                    controller.show_update_logs_dialog();
-                }
-            ));
 
         self.widgets
             .updates
@@ -882,6 +870,11 @@ impl AppController {
             state.installing_package = Some(package.name.clone());
         }
 
+        // Track the operation start
+        use crate::state::types::OperationType;
+        let command = format!("xbps-install -y {}", package.name);
+        self.start_operation_tracking(package.name.clone(), OperationType::Install, command);
+
         self.rebuild_search_list();
         self.refresh_discover_install_widgets();
         self.restore_discover_focus_for(&package.name);
@@ -908,6 +901,11 @@ impl AppController {
             state.remove_in_progress = true;
             state.removing_packages.insert(package.clone());
         }
+
+        // Track the operation start
+        use crate::state::types::OperationType;
+        let command = format!("xbps-remove -y {}", package);
+        self.start_operation_tracking(package.clone(), OperationType::Remove, command);
 
         let message = format!("Removing \"{}\"…", package);
         self.set_footer_message(Some(&message));
@@ -1254,73 +1252,6 @@ impl AppController {
         dialog.present();
     }
 
-    pub(crate) fn show_update_logs_dialog(self: &Rc<Self>) {
-        if let Some(dialog) = self.update_log_dialog.borrow().as_ref() {
-            self.refresh_update_log_buffer();
-            dialog.present();
-            return;
-        }
-
-        let dialog = gtk::Dialog::builder()
-            .transient_for(&self.window)
-            .modal(true)
-            .title("Update Logs")
-            .build();
-        dialog.set_default_size(640, 400);
-
-        let content = dialog.content_area();
-        content.set_spacing(12);
-        content.set_margin_top(12);
-        content.set_margin_bottom(12);
-        content.set_margin_start(12);
-        content.set_margin_end(12);
-
-        let scroller = gtk::ScrolledWindow::builder()
-            .hexpand(true)
-            .vexpand(true)
-            .build();
-        let text_view = gtk::TextView::builder()
-            .editable(false)
-            .cursor_visible(false)
-            .monospace(true)
-            .wrap_mode(gtk::WrapMode::Char)
-            .build();
-        let buffer = text_view.buffer();
-        self.populate_update_log_buffer(&buffer);
-        self.update_log_buffer.replace(Some(buffer.clone()));
-        scroller.set_child(Some(&text_view));
-        content.append(&scroller);
-        self.update_log_view.replace(Some(text_view.clone()));
-
-        dialog.add_button("Close", gtk::ResponseType::Close);
-        dialog.connect_response(|dialog, _| dialog.close());
-
-        {
-            let controller = Rc::downgrade(self);
-            dialog.connect_hide(move |_| {
-                if let Some(controller) = controller.upgrade() {
-                    controller.update_log_dialog.replace(None);
-                    controller.update_log_buffer.replace(None);
-                    controller.update_log_view.replace(None);
-                }
-            });
-        }
-
-        {
-            let controller = Rc::downgrade(self);
-            dialog.connect_close_request(move |_| {
-                if let Some(controller) = controller.upgrade() {
-                    controller.update_log_dialog.replace(None);
-                    controller.update_log_buffer.replace(None);
-                    controller.update_log_view.replace(None);
-                }
-                Propagation::Proceed
-            });
-        }
-
-        self.update_log_dialog.replace(Some(dialog.clone()));
-        dialog.present();
-    }
 
     pub(crate) fn refresh_update_log_buffer(&self) {
         if let Some(buffer) = self.update_log_buffer.borrow().as_ref() {
@@ -1377,6 +1308,9 @@ impl AppController {
         package: String,
         result: Result<CommandResult, String>,
     ) {
+        // Complete operation tracking
+        self.complete_operation_tracking(&package, &result);
+
         {
             let mut state = self.state.borrow_mut();
             state.install_in_progress = false;
@@ -1426,6 +1360,9 @@ impl AppController {
         package: String,
         result: Result<CommandResult, String>,
     ) {
+        // Complete operation tracking
+        self.complete_operation_tracking(&package, &result);
+
         {
             let mut state = self.state.borrow_mut();
             state.remove_in_progress = false;

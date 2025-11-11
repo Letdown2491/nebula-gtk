@@ -160,6 +160,9 @@ pub(crate) fn build_ui(app: &adw::Application) {
     let about_action = gio::SimpleAction::new("about", None);
     app.add_action(&about_action);
 
+    let operations_action = gio::SimpleAction::new("recent-operations", None);
+    app.add_action(&operations_action);
+
     let menu_button = gtk::MenuButton::builder()
         .icon_name("open-menu-symbolic")
         .halign(gtk::Align::Center)
@@ -262,6 +265,13 @@ pub(crate) fn build_ui(app: &adw::Application) {
         .build();
     menu_list.add_css_class("boxed-list");
 
+    let mirrors_row = adw::ActionRow::builder()
+        .title("Mirrors")
+        .activatable(true)
+        .build();
+    mirrors_row.set_action_name(Some("app.mirrors"));
+    menu_list.append(&mirrors_row);
+
     let prefs_row = adw::ActionRow::builder()
         .title("Preferences")
         .activatable(true)
@@ -269,12 +279,12 @@ pub(crate) fn build_ui(app: &adw::Application) {
     prefs_row.set_action_name(Some("app.preferences"));
     menu_list.append(&prefs_row);
 
-    let mirrors_row = adw::ActionRow::builder()
-        .title("Mirrors")
+    let operations_row = adw::ActionRow::builder()
+        .title("Recent Activity")
         .activatable(true)
         .build();
-    mirrors_row.set_action_name(Some("app.mirrors"));
-    menu_list.append(&mirrors_row);
+    operations_row.set_action_name(Some("app.recent-operations"));
+    menu_list.append(&operations_row);
 
     let about_row = adw::ActionRow::builder()
         .title("About Nebula")
@@ -452,6 +462,18 @@ pub(crate) fn build_ui(app: &adw::Application) {
             popover_clone.popdown();
             if let Some(controller) = controller_weak.upgrade() {
                 controller.show_about_dialog();
+            }
+        });
+    }
+
+    {
+        let controller_weak = Rc::downgrade(&controller);
+        let window_clone = window.clone();
+        let popover_clone = popover.clone();
+        operations_action.connect_activate(move |_, _| {
+            popover_clone.popdown();
+            if let Some(controller) = controller_weak.upgrade() {
+                crate::ui::show_operations_dialog(&controller, &window_clone);
             }
         });
     }

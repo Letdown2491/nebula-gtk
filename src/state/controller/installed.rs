@@ -1304,6 +1304,11 @@ impl AppController {
             .valign(gtk::Align::Center)
             .build();
 
+        // Add operation status indicator if there's a recent operation
+        if let Some(status_indicator) = self.create_operation_status_indicator(&pkg.name) {
+            actions_box.append(&status_indicator);
+        }
+
         if has_update {
             let package_name = pkg.name.clone();
             let update_button = gtk::Button::builder().label("Update").build();

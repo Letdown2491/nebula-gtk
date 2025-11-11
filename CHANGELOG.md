@@ -8,6 +8,7 @@
 - Added Waypoint module to integrate Btrfs snapshot creation on system upgrade.
 - Added preferences UI + message handler for Waypoint integration.
 - Added dedicated start/end window controls plus mirrored header logos so the system layout moves the branding to the free side.
+- Added toast notification for Hold/Unhold package actions.
 - Updated empty search state pages to be more informative.
 - Wired notify::empty listeners to toggle which logo is shown as GNOME switches button placement, keeping the menu button available either way.
 - Moved Tools page notifications to application footer for cleaner UI and save vertical space.

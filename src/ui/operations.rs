@@ -74,10 +74,26 @@ pub(crate) fn show_operations_dialog(controller: &Rc<AppController>, parent: &ad
         let window_weak = window.downgrade();
         clear_button.connect_clicked(move |_| {
             if let Some(controller) = controller_weak.upgrade() {
-                controller.clear_operation_history();
-                if let Some(window) = window_weak.upgrade() {
-                    window.close();
-                }
+                let operation_count = controller.get_all_operations().len();
+                let heading = "Clear operation history?";
+                let body = if operation_count == 1 {
+                    "This will permanently clear 1 operation from the history. This cannot be undone.".to_string()
+                } else {
+                    format!("This will permanently clear {} operations from the history. This cannot be undone.", operation_count)
+                };
+
+                let window_weak_clone = window_weak.clone();
+                controller.confirm_action(&heading, &body, "Clear", move |controller| {
+                    controller.clear_operation_history();
+                    controller.show_toast("Operation history cleared");
+
+                    // Close the window after a brief delay to show the toast
+                    if let Some(window) = window_weak_clone.upgrade() {
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                            window.close();
+                        });
+                    }
+                });
             }
         });
 

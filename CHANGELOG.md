@@ -12,6 +12,7 @@
 - Wired notify::empty listeners to toggle which logo is shown as GNOME switches button placement, keeping the menu button available either way.
 - Moved Tools page notifications to application footer for cleaner UI and save vertical space.
 - Reordered menu items.
+- Fixed a critical error that allowed users to remove multiple packages without confirmation even when the confirmation setting was enabled in Preferences.
 
 ## 1.2.2
 - Added hold/unhold feature for installed packages to prevent updates on specific package versions.

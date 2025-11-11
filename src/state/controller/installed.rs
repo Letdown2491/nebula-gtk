@@ -77,6 +77,41 @@ impl AppController {
             return;
         }
 
+        // Check if confirmation is required
+        if self.state.borrow().confirm_remove {
+            let pkg_count = packages.len();
+            let packages_clone = packages.clone();
+
+            let heading = if pkg_count == 1 {
+                format!("Remove \"{}\"?", packages[0])
+            } else {
+                format!("Remove {} selected packages?", pkg_count)
+            };
+
+            let body = if pkg_count == 1 {
+                "The package and its data will be removed from this system.".to_string()
+            } else {
+                let package_list = packages.iter()
+                    .take(5)
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                if pkg_count > 5 {
+                    format!("The following packages will be removed: {}, and {} more.\n\nAll packages and their data will be removed from this system.",
+                        package_list, pkg_count - 5)
+                } else {
+                    format!("The following packages will be removed: {}.\n\nAll packages and their data will be removed from this system.",
+                        package_list)
+                }
+            };
+
+            self.confirm_action(&heading, &body, "Remove", move |controller| {
+                controller.execute_remove_batch(packages_clone);
+            });
+            return;
+        }
+
         self.execute_remove_batch(packages);
     }
 

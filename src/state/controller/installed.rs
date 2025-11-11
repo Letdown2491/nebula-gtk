@@ -1135,7 +1135,7 @@ impl AppController {
     }
 
     pub(crate) fn rebuild_installed_list(self: &Rc<Self>) {
-        let (matched, status_message, selected_index) = {
+        let (matched, status_message, selected_index, total_installed, filter_mode) = {
             let mut state = self.state.borrow_mut();
             let filter_lower = state.installed_filter.to_lowercase();
             let filter_mode = state.installed_filter_mode;
@@ -1186,7 +1186,7 @@ impl AppController {
                 ))
             };
 
-            (matched, status_message, selected_index)
+            (matched, status_message, selected_index, total_installed, filter_mode)
         };
 
         let store = &self.widgets.installed.list_store;
@@ -1205,7 +1205,33 @@ impl AppController {
             selection.set_selected(gtk::INVALID_LIST_POSITION);
         }
 
-        self.set_installed_status_message(status_message);
+        self.set_installed_status_message(status_message.clone());
+
+        // Switch between list and no-results views
+        if matched.is_empty() {
+            // Update the no-results page description based on context
+            let description = if total_installed == 0 {
+                "No packages are installed yet. Install something from Discover."
+            } else if filter_mode == InstalledFilter::Updates {
+                "No installed packages have updates available."
+            } else {
+                "No installed packages match your search. Try a different search term."
+            };
+            self.widgets
+                .installed
+                .no_results_page
+                .set_description(Some(description));
+            self.widgets
+                .installed
+                .installed_results_stack
+                .set_visible_child_name("no-results");
+        } else {
+            self.widgets
+                .installed
+                .installed_results_stack
+                .set_visible_child_name("list");
+        }
+
         self.update_installed_selection_ui();
         self.update_installed_details();
     }

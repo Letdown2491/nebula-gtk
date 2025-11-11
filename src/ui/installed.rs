@@ -18,6 +18,8 @@ pub(crate) struct InstalledWidgets {
     pub(crate) list_selection: gtk::SingleSelection,
     pub(crate) list_view: gtk::ListView,
     pub(crate) list_factory: gtk::SignalListItemFactory,
+    pub(crate) installed_results_stack: gtk::Stack,
+    pub(crate) no_results_page: adw::StatusPage,
     pub(crate) detail_stack: gtk::Stack,
     pub(crate) detail_frame: gtk::Frame,
     pub(crate) detail_remove_button: gtk::Button,
@@ -144,6 +146,25 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
         .min_content_height(320)
         .build();
     scroller.set_child(Some(&list_view));
+
+    // Empty state for no results
+    let no_results_page = adw::StatusPage::builder()
+        .icon_name("system-search-symbolic")
+        .title("No Packages Found")
+        .description("No installed packages match your search.")
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+
+    // Stack to switch between list and no-results
+    let installed_results_stack = gtk::Stack::builder()
+        .transition_type(gtk::StackTransitionType::Crossfade)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    installed_results_stack.add_named(&scroller, Some("list"));
+    installed_results_stack.add_named(&no_results_page, Some("no-results"));
+    installed_results_stack.set_visible_child_name("list");
 
     let detail_name = gtk::Label::builder()
         .halign(gtk::Align::Start)
@@ -475,7 +496,7 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
         .vexpand(true)
         .build();
     content_row.set_homogeneous(false);
-    content_row.append(&scroller);
+    content_row.append(&installed_results_stack);
     content_row.append(&detail_frame);
 
     container.append(&controls_row);
@@ -506,6 +527,8 @@ pub(crate) fn build_page() -> (gtk::Box, InstalledWidgets) {
         list_selection,
         list_view,
         list_factory,
+        installed_results_stack,
+        no_results_page,
         detail_stack,
         detail_frame,
         detail_remove_button,

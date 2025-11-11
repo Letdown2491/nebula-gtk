@@ -46,7 +46,8 @@ pub(crate) struct DiscoverWidgets {
     pub(crate) search_spinner: gtk::Spinner,
     pub(crate) status_label: gtk::Label,
     pub(crate) list: gtk::ListBox,
-    pub(crate) scroller: gtk::ScrolledWindow,
+    pub(crate) search_results_stack: gtk::Stack,
+    pub(crate) no_results_page: adw::StatusPage,
     pub(crate) content_row: gtk::Box,
     pub(crate) detail_stack: gtk::Stack,
     pub(crate) detail_name: gtk::Label,
@@ -657,8 +658,26 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .min_content_height(320)
         .build();
     scroller.set_child(Some(&list));
-    scroller.set_visible(false);
     scroller.set_vexpand(true);
+
+    // Empty state for no search results
+    let no_results_page = adw::StatusPage::builder()
+        .icon_name("system-search-symbolic")
+        .title("No Packages Found")
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+
+    // Stack to switch between list and no-results
+    let search_results_stack = gtk::Stack::builder()
+        .transition_type(gtk::StackTransitionType::Crossfade)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    search_results_stack.add_named(&scroller, Some("list"));
+    search_results_stack.add_named(&no_results_page, Some("no-results"));
+    search_results_stack.set_visible_child_name("list");
+    search_results_stack.set_visible(false);
 
     let detail_name = gtk::Label::builder()
         .halign(gtk::Align::Start)
@@ -984,7 +1003,7 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         .vexpand(true)
         .build();
     content_row.set_homogeneous(false);
-    content_row.append(&scroller);
+    content_row.append(&search_results_stack);
     content_row.append(&detail_frame);
     content_row.set_visible(false);
 
@@ -999,7 +1018,8 @@ pub(crate) fn build_page() -> (gtk::Box, DiscoverWidgets) {
         search_spinner,
         status_label,
         list,
-        scroller,
+        search_results_stack,
+        no_results_page,
         content_row,
         detail_stack,
         detail_name,

@@ -241,6 +241,10 @@ impl AppController {
                     self.clear_discover_details(navigation_active);
                     let message = format!("No packages matched \"{}\".", query);
                     self.set_discover_status(Some(&message));
+
+                    // Update the no-results page description
+                    let description = format!("No packages matched \"{}\". Try a different search term.", query);
+                    self.widgets.discover.no_results_page.set_description(Some(&description));
                 } else {
                     let message = format!(
                         "Found {} package{} for \"{}\".",
@@ -719,9 +723,13 @@ impl AppController {
     }
 
     pub(crate) fn update_discover_layout(&self) {
-        let (mode, has_results) = {
+        let (mode, has_results, is_searching) = {
             let state = self.state.borrow();
-            (state.discover_mode, !state.search_results.is_empty())
+            (
+                state.discover_mode,
+                !state.search_results.is_empty(),
+                state.discover_mode == DiscoverMode::Search,
+            )
         };
 
         let spotlight_visible = mode == DiscoverMode::Spotlight;
@@ -729,10 +737,28 @@ impl AppController {
             .discover
             .spotlight_section_box
             .set_visible(spotlight_visible);
-        self.widgets.discover.scroller.set_visible(has_results);
-        self.widgets.discover.scroller.set_vexpand(has_results);
-        self.widgets.discover.content_row.set_visible(has_results);
-        self.widgets.discover.content_row.set_vexpand(has_results);
+
+        // Show search results stack if we're in search mode
+        let show_search_area = is_searching;
+        self.widgets
+            .discover
+            .search_results_stack
+            .set_visible(show_search_area);
+        self.widgets.discover.content_row.set_visible(show_search_area);
+        self.widgets.discover.content_row.set_vexpand(show_search_area);
+
+        // Switch between list and no-results within the stack
+        if has_results {
+            self.widgets
+                .discover
+                .search_results_stack
+                .set_visible_child_name("list");
+        } else if is_searching {
+            self.widgets
+                .discover
+                .search_results_stack
+                .set_visible_child_name("no-results");
+        }
     }
 
     pub(crate) fn clear_search_results(self: &Rc<Self>) {

@@ -3,6 +3,7 @@
 ## 1.3.7
 - Fixed a critical error that prevented Waypoint btrfs snapshots from being created during system upgrades.
 - Fixed a critical BorrowMutError panic that occurred when clicking update buttons due to nested borrows in operation tracking.
+- Fixed package duplication bug in Discover page.
 - Removed duplicate footer messages in Updates page by removing redundant status_revealer widget.
 - Updates page now uses consistent footer messaging pattern like all other pages.
 - Updated CHANGELOG.

@@ -1,4 +1,5 @@
 use crate::types::{PackageInfo, lowercase_cache};
+use std::collections::HashMap;
 
 pub(crate) fn parse_bytes_from_field(text: &str) -> Option<u64> {
     let trimmed = text.trim().trim_end_matches(|c| c == ',' || c == '.');
@@ -94,52 +95,62 @@ pub(crate) fn parse_bytes(text: &str) -> Option<u64> {
 }
 
 pub(crate) fn parse_query_output(output: &str) -> Vec<PackageInfo> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
+    let mut packages_map: HashMap<String, PackageInfo> = HashMap::new();
 
-            let mut tokens = trimmed.split_whitespace();
-            let first = tokens.next()?;
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
 
-            let (marker, identifier_token) = if first.starts_with('[') && first.ends_with(']') {
-                (Some(first), tokens.next()?)
-            } else {
-                (None, first)
-            };
+        let mut tokens = trimmed.split_whitespace();
+        let Some(first) = tokens.next() else {
+            continue;
+        };
 
-            let mut installed = false;
-            if let Some(marker) = marker {
-                installed = marker.contains('x') || marker.contains('X');
-            }
+        let (marker, identifier_token) = if first.starts_with('[') && first.ends_with(']') {
+            (Some(first), tokens.next())
+        } else {
+            (None, Some(first))
+        };
 
-            let identifier = identifier_token.trim();
-            let rest = tokens.collect::<Vec<_>>().join(" ");
-            let (name, version) = split_package_identifier(identifier);
+        let Some(identifier_token) = identifier_token else {
+            continue;
+        };
 
-            let description = rest;
-            Some(PackageInfo {
-                name_lower: lowercase_cache(&name),
-                version_lower: lowercase_cache(&version),
-                description_lower: lowercase_cache(&description),
-                name,
-                version,
-                description,
-                installed,
-                pinned: false,
-                previous_version: None,
-                download_size: None,
-                changelog: None,
-                download_bytes: None,
-                repository: None,
-                build_date: None,
-                first_seen: None,
-            })
-        })
-        .collect()
+        let mut installed = false;
+        if let Some(marker) = marker {
+            installed = marker.contains('x') || marker.contains('X');
+        }
+
+        let identifier = identifier_token.trim();
+        let rest = tokens.collect::<Vec<_>>().join(" ");
+        let (name, version) = split_package_identifier(identifier);
+
+        let description = rest;
+        let package_info = PackageInfo {
+            name_lower: lowercase_cache(&name),
+            version_lower: lowercase_cache(&version),
+            description_lower: lowercase_cache(&description),
+            name: name.clone(),
+            version,
+            description,
+            installed,
+            pinned: false,
+            previous_version: None,
+            download_size: None,
+            changelog: None,
+            download_bytes: None,
+            repository: None,
+            build_date: None,
+            first_seen: None,
+        };
+
+        // Use package name as key to deduplicate entries from multiple mirrors
+        packages_map.insert(name, package_info);
+    }
+
+    packages_map.into_values().collect()
 }
 
 pub(crate) fn parse_installed_output(output: &str) -> Vec<PackageInfo> {

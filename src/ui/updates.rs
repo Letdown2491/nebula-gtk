@@ -6,8 +6,6 @@ use adw::prelude::*;
 
 pub(crate) struct UpdatesWidgets {
     pub(crate) summary_row: gtk::Box,
-    pub(crate) status_label: gtk::Label,
-    pub(crate) status_revealer: gtk::Revealer,
     pub(crate) list: gtk::ListBox,
     pub(crate) scroller: gtk::ScrolledWindow,
     pub(crate) content_row: gtk::Box,
@@ -73,32 +71,6 @@ pub(crate) fn build_page() -> (gtk::Box, UpdatesWidgets) {
     spinner.set_valign(gtk::Align::Center);
     summary_row.append(&spinner);
 
-    // Status footer with revealer (like Tools page)
-    let status_revealer = gtk::Revealer::builder()
-        .transition_type(gtk::RevealerTransitionType::SlideUp)
-        .transition_duration(200)
-        .reveal_child(false)
-        .build();
-
-    let status_box = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .halign(gtk::Align::Center)
-        .spacing(8)
-        .margin_top(16)
-        .margin_bottom(8)
-        .margin_start(32)
-        .margin_end(32)
-        .build();
-    status_box.add_css_class("toolbar");
-
-    let status_label = gtk::Label::builder()
-        .wrap(true)
-        .wrap_mode(pango::WrapMode::WordChar)
-        .halign(gtk::Align::Center)
-        .build();
-
-    status_box.append(&status_label);
-    status_revealer.set_child(Some(&status_box));
 
     let placeholder = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -471,13 +443,10 @@ pub(crate) fn build_page() -> (gtk::Box, UpdatesWidgets) {
     footer_label.set_text("Last checked — never.");
 
     container.append(&content_row);
-    container.append(&status_revealer);
     container.append(&footer_label);
 
     let widgets = UpdatesWidgets {
         summary_row: summary_row.clone(),
-        status_label,
-        status_revealer,
         list,
         scroller,
         content_row,

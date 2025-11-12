@@ -33,12 +33,6 @@ impl AppController {
             .set_sensitive(enabled);
     }
 
-    pub(crate) fn set_status_text(&self, text: &str) {
-        let label = &self.widgets.updates.status_label;
-        let revealer = &self.widgets.updates.status_revealer;
-        label.set_text(text);
-        revealer.set_reveal_child(!text.is_empty());
-    }
 
     pub(crate) fn set_summary_text(&self, text: &str) {
         self.widgets.updates.summary_label.set_text(text);
@@ -1038,7 +1032,6 @@ impl AppController {
             };
             self.widgets.updates.placeholder_label.set_text(message);
             self.set_summary_text(message);
-            self.set_status_text("");
         }
 
         if !silent {
@@ -1158,7 +1151,6 @@ impl AppController {
 
         if !success {
             let message = error.unwrap_or_else(|| "Failed to check for updates.".to_string());
-            self.set_status_text(&message);
             self.set_summary_text(&message);
             self.set_footer_message(Some(&message));
             self.widgets
@@ -1181,14 +1173,11 @@ impl AppController {
         }
 
         if available.is_empty() {
-            self.set_status_text("");
             self.widgets
                 .updates
                 .placeholder_label
                 .set_text("Your system is up to date!");
             self.clear_updates_detail();
-        } else {
-            self.set_status_text("");
         }
 
         let has_updates = !available.is_empty();
@@ -1249,7 +1238,7 @@ impl AppController {
         }
 
         if selected == 0 {
-            self.set_status_text("Select at least one update to apply.");
+            self.set_footer_message(Some("Select at least one update to apply."));
             return;
         }
 
@@ -1325,7 +1314,6 @@ impl AppController {
         self.refresh_update_log_buffer();
 
         if affected_packages.is_empty() {
-            self.set_status_text("");
             self.set_summary_text("");
             self.set_footer_message(None);
             {
@@ -1339,12 +1327,10 @@ impl AppController {
 
         let footer_message = if from_all {
             let message = "Installing all available updates…".to_string();
-            self.set_status_text(&message);
             self.set_summary_text(&message);
             message
         } else {
             let message = format!("Updating \"{}\"…", package);
-            self.set_status_text(&message);
             self.set_summary_text(&message);
             message
         };
@@ -1357,27 +1343,37 @@ impl AppController {
         self.update_update_controls();
 
         // Track operation start for each package
-        {
+        // Collect data first to avoid holding borrow while calling start_operation_tracking
+        let package_data: Vec<_> = {
             let state = self.state.borrow();
-            for pkg_name in &affected_packages {
-                if let Some(pkg) = state.available_updates.iter().find(|p| &p.name == pkg_name) {
-                    let from_version = pkg.previous_version.clone().unwrap_or_else(|| "unknown".to_string());
-                    let to_version = pkg.version.clone();
-                    let command = if from_all {
-                        "xbps-install -Su".to_string()
-                    } else {
-                        format!("xbps-install -u {}", pkg_name)
-                    };
-                    self.start_operation_tracking(
-                        pkg_name.clone(),
-                        crate::state::types::OperationType::Update {
-                            from_version,
-                            to_version,
-                        },
-                        command,
-                    );
-                }
-            }
+            affected_packages.iter()
+                .filter_map(|pkg_name| {
+                    state.available_updates.iter()
+                        .find(|p| &p.name == pkg_name)
+                        .map(|pkg| {
+                            let from_version = pkg.previous_version.clone().unwrap_or_else(|| "unknown".to_string());
+                            let to_version = pkg.version.clone();
+                            let command = if from_all {
+                                "xbps-install -Su".to_string()
+                            } else {
+                                format!("xbps-install -u {}", pkg_name)
+                            };
+                            (pkg_name.clone(), from_version, to_version, command)
+                        })
+                })
+                .collect()
+        };
+
+        // Now call start_operation_tracking without holding any borrows
+        for (pkg_name, from_version, to_version, command) in package_data {
+            self.start_operation_tracking(
+                pkg_name,
+                crate::state::types::OperationType::Update {
+                    from_version,
+                    to_version,
+                },
+                command,
+            );
         }
 
         let sender = self.sender.clone();
@@ -1432,7 +1428,6 @@ impl AppController {
             packages.len(),
             if packages.len() == 1 { "" } else { "s" }
         );
-        self.set_status_text(&message);
         self.set_summary_text(&message);
         self.set_footer_message(Some(&message));
         self.set_check_buttons_sensitive(false);
@@ -1442,23 +1437,33 @@ impl AppController {
         self.update_update_controls();
 
         // Track operation start for each package
-        {
+        // Collect data first to avoid holding borrow while calling start_operation_tracking
+        let package_data: Vec<_> = {
             let state = self.state.borrow();
-            for pkg_name in &packages {
-                if let Some(pkg) = state.available_updates.iter().find(|p| &p.name == pkg_name) {
-                    let from_version = pkg.previous_version.clone().unwrap_or_else(|| "unknown".to_string());
-                    let to_version = pkg.version.clone();
-                    let command = format!("xbps-install -u {}", pkg_name);
-                    self.start_operation_tracking(
-                        pkg_name.clone(),
-                        crate::state::types::OperationType::Update {
-                            from_version,
-                            to_version,
-                        },
-                        command,
-                    );
-                }
-            }
+            packages.iter()
+                .filter_map(|pkg_name| {
+                    state.available_updates.iter()
+                        .find(|p| &p.name == pkg_name)
+                        .map(|pkg| {
+                            let from_version = pkg.previous_version.clone().unwrap_or_else(|| "unknown".to_string());
+                            let to_version = pkg.version.clone();
+                            let command = format!("xbps-install -u {}", pkg_name);
+                            (pkg_name.clone(), from_version, to_version, command)
+                        })
+                })
+                .collect()
+        };
+
+        // Now call start_operation_tracking without holding any borrows
+        for (pkg_name, from_version, to_version, command) in package_data {
+            self.start_operation_tracking(
+                pkg_name,
+                crate::state::types::OperationType::Update {
+                    from_version,
+                    to_version,
+                },
+                command,
+            );
         }
 
         let affected = packages.clone();
@@ -1498,8 +1503,7 @@ impl AppController {
                     self.clear_package_status(&packages);
                     if all {
                         let message = "System updated successfully.";
-                        self.set_status_text(message);
-                        self.set_summary_text(message);
+                        self.set_summary_text("");
                         self.set_footer_message(Some(message));
                         self.show_toast("All updates installed.");
                         {
@@ -1512,8 +1516,7 @@ impl AppController {
                     } else if packages.len() == 1 {
                         let name = packages.first().cloned().unwrap_or_default();
                         let message = format!("\"{}\" updated successfully.", name);
-                        self.set_status_text(&message);
-                        self.set_summary_text(&message);
+                        self.set_summary_text("");
                         self.set_footer_message(Some(&message));
                         self.show_toast(&format!("Updated {}.", name));
                         {
@@ -1529,8 +1532,7 @@ impl AppController {
                         }
                     } else {
                         let message = "Selected updates installed successfully.";
-                        self.set_status_text(message);
-                        self.set_summary_text(message);
+                        self.set_summary_text("");
                         self.set_footer_message(Some(message));
                         self.show_toast("Selected updates installed.");
                         {
@@ -1591,7 +1593,6 @@ impl AppController {
                     } else {
                         format!("Failed to install selected updates: {}", detail)
                     };
-                    self.set_status_text("");
                     self.set_summary_text("");
                     self.set_footer_message(Some(&message));
                     self.show_error_dialog("Update Failed", &message);
@@ -1613,7 +1614,6 @@ impl AppController {
                 } else {
                     format!("Failed to install selected updates: {}", err)
                 };
-                self.set_status_text("");
                 self.set_summary_text("");
                 self.set_footer_message(Some(&message));
                 self.show_error_dialog("Update Failed", &message);

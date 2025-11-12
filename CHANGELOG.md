@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.7
+- Fixed a critical BorrowMutError panic that occurred when clicking update buttons due to nested borrows in operation tracking.
+- Removed duplicate footer messages in Updates page by removing redundant status_revealer widget.
+- Updates page now uses consistent footer messaging pattern like all other pages.
+- Updated CHANGELOG.
+- Updated version number.
+
 ## 1.3.5
 - Added Recent Activity to hamburger menu to track install/remove/update operations.
 - Added activity indicators to packages to easily distinguish success/error states in install/remove/update operations.
